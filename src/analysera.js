@@ -53,7 +53,7 @@ if (!pos) {
   if (harResrobotNyckel()) {
     const h = await narmasteHallplatser(pos.lat, pos.lon);
     if (h?.narmaste) {
-      rader.push(`Hållplats: ${h.narmaste.namn} (${h.narmaste.avstand} m)`);
+      rader.push(`Hållplats: ${h.narmaste.namn} · ${h.narmaste.avstand} m`);
       if (h.narmaste.avstand > k.maxAvståndHållplatsM)
         brister.push(`hållplats ${h.narmaste.avstand} m bort (krav: ${k.maxAvståndHållplatsM} m)`);
     } else if (h) {
@@ -71,9 +71,9 @@ if (!pos) {
   const n = await naturInfo(pos.lat, pos.lon);
   if (n) {
     rader.push(
-      `Vatten: ${n.vattenM != null ? "~" + n.vattenM + " m" : "> 1,5 km"} · ` +
-        `Skog: ${n.skogM != null ? "~" + n.skogM + " m" : "> 1,5 km"} · ` +
-        `Grannar (300 m): ${n.grannar}`
+      `Vatten: ${n.vattenM != null ? "ca " + n.vattenM + " m" : "över 1,5 km"} · ` +
+        `Skog: ${n.skogM != null ? "ca " + n.skogM + " m" : "över 1,5 km"} · ` +
+        `Grannar: ${n.grannar}`
     );
     const vattenOk = n.vattenM != null && n.vattenM <= k.maxAvståndVattenM;
     const skogOk = n.skogM != null && n.skogM <= k.maxAvståndSkogM;
@@ -87,11 +87,14 @@ if (!pos) {
 
 const traff = brister.length === 0;
 await notis({
-  titel: traff ? `Analys: TRÄFF – ${a.adress}` : `Analys: ${a.adress}`,
+  titel: traff ? `Analys: Träff · ${a.adress}` : `Analys: ${a.adress}`,
   meddelande: [
     ...rader,
-    traff ? "Uppfyller alla dina krav." : `Brister: ${brister.join("; ")}.`,
+    traff ? "✓ Uppfyller alla dina krav" : `Brister: ${brister.join("; ")}`,
   ].join("\n"),
   lank: a.url,
+  lat: pos?.lat,
+  lon: pos?.lon,
+  prioritet: traff ? 4 : 3,
 });
 console.log(traff ? "TRÄFF – notis skickad." : `Brister: ${brister.join("; ")} – notis skickad.`);

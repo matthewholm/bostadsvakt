@@ -97,9 +97,9 @@ for (const a of annonser) {
   if (a.lat != null && a.lon != null) {
     const h = await narmasteHallplatser(a.lat, a.lon);
     if (h?.narmaste) {
-      rader.push(`Hållplats: ${h.narmaste.namn} (${h.narmaste.avstand} m)`);
+      rader.push(`Hållplats: ${h.narmaste.namn} · ${h.narmaste.avstand} m`);
       if (h.narmasteTag && h.narmasteTag.namn !== h.narmaste.namn) {
-        rader.push(`Tåg: ${h.narmasteTag.namn} (${h.narmasteTag.avstand} m)`);
+        rader.push(`Tåg: ${h.narmasteTag.namn} · ${h.narmasteTag.avstand} m`);
       }
       if (h.narmaste.avstand > k.maxAvståndHållplatsM) uppfyller = false;
     } else if (h) {
@@ -116,9 +116,9 @@ for (const a of annonser) {
     const n = await naturInfo(a.lat, a.lon);
     if (n) {
       rader.push(
-        `Vatten: ${n.vattenM != null ? "~" + n.vattenM + " m" : "> 1,5 km"} · ` +
-          `Skog: ${n.skogM != null ? "~" + n.skogM + " m" : "> 1,5 km"} · ` +
-          `Grannar (300 m): ${n.grannar}`
+        `Vatten: ${n.vattenM != null ? "ca " + n.vattenM + " m" : "över 1,5 km"} · ` +
+          `Skog: ${n.skogM != null ? "ca " + n.skogM + " m" : "över 1,5 km"} · ` +
+          `Grannar: ${n.grannar}`
       );
       const vattenOk = n.vattenM != null && n.vattenM <= k.maxAvståndVattenM;
       const skogOk = n.skogM != null && n.skogM <= k.maxAvståndSkogM;
@@ -142,13 +142,21 @@ for (const a of annonser) {
   const pris = a.pris ? `${a.pris.toLocaleString("sv-SE")} kr` : "";
   const fakta = [a.rum && `${a.rum} rum`, a.boarea && `${a.boarea} m²`, a.tomtarea && `tomt ${a.tomtarea} m²`]
     .filter(Boolean)
-    .join(", ");
+    .join(" · ");
   const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
   await notis({
-    titel: [uppfyller ? "Träff:" : "Ny:", typNamn, a.omrade ? `i ${a.omrade}` : "", pris ? `– ${pris}` : ""]
+    titel: [uppfyller ? "Träff:" : "Ny:", typNamn, a.omrade ? `i ${a.omrade}` : "", pris ? `· ${pris}` : ""]
       .filter(Boolean).join(" "),
-    meddelande: [a.adress, fakta, ...rader, `via ${a.kalla}`].filter(Boolean).join("\n"),
+    meddelande: [
+      a.adress,
+      fakta,
+      ...rader,
+      (uppfyller ? "✓ Uppfyller alla dina krav" : "Uppfyller inte alla krav") + ` · via ${a.kalla}`,
+    ].filter(Boolean).join("\n"),
     lank: a.url,
+    lat: a.lat,
+    lon: a.lon,
+    prioritet: uppfyller ? 4 : 3,
   });
   console.log(`  Notis skickad: ${a.adress} (${a.kalla})`);
 }
@@ -210,8 +218,10 @@ async function korTest() {
   console.log("4. Skickar testnotis (ntfy)...");
   await notis({
     titel: "Testnotis från Bostadsvakt",
-    meddelande: [`${hus.adress}, ${hus.ort} (låtsashus)`, ...rader, "Allt fungerar!"].join("\n"),
+    meddelande: [`${hus.adress}, ${hus.ort} (låtsashus)`, ...rader, "✓ Allt fungerar"].join("\n"),
     lank: "https://github.com/mathiasmholm/bostadsvakt",
+    lat: hus.lat,
+    lon: hus.lon,
   });
   console.log(
     process.env.NTFY_TOPIC
