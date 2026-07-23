@@ -39,11 +39,18 @@ jobs:
 
       - name: Spara i galleriet
         run: |
-          if ! git diff --quiet data/; then
-            git config user.name "bostadsvakt-bot"
-            git config user.email "actions@users.noreply.github.com"
+          cp data/traffar.json /tmp/mina-traffar.json
+          git config user.name "bostadsvakt-bot"
+          git config user.email "actions@users.noreply.github.com"
+          for i in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            node src/merge.js /tmp/mina-traffar.json
             git add data/
+            if git diff --cached --quiet; then echo "Inget nytt att spara."; exit 0; fi
             git commit -m "Spara analyserad bostad i galleriet"
-            git pull --rebase
-            git push
-          fi
+            if git push; then echo "Sparat."; exit 0; fi
+            echo "Push avvisad (försök $i) – hämtar senaste och slår ihop igen."
+            sleep 3
+          done
+          echo "Kunde inte spara efter flera försök."; exit 1
