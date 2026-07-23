@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { harBooliNycklar, sokAnnonser } from "./booli.js";
 import { harImap, hamtaMailAnnonser } from "./mailsource.js";
-import { narmasteHallplatser, harResrobotNyckel } from "./transit.js";
+import { narmasteHallplatser, restidTillStockholm, harResrobotNyckel } from "./transit.js";
 import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
 import { lasSedda, sparaSedda } from "./state.js";
@@ -13,6 +13,7 @@ const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url
 const k = config.kriterier;
 const paus = (ms) => new Promise((r) => setTimeout(r, ms));
 const normTyp = (s) => (s ?? "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+const fmtTid = (min) => (min >= 60 ? `${Math.floor(min / 60)} tim ${min % 60} min` : `${min} min`);
 
 // Testläge: kör hela kedjan på ett låtsashus utan att behöva några nycklar.
 if (process.argv.includes("--test")) {
@@ -106,6 +107,12 @@ for (const a of annonser) {
       uppfyller = false;
     }
 
+    const restid = await restidTillStockholm(a.lat, a.lon);
+    if (restid != null) {
+      rader.push(`Till Stockholm C: ca ${fmtTid(restid)}`);
+      if (k.maxRestidStockholmMin && restid > k.maxRestidStockholmMin) uppfyller = false;
+    }
+
     const n = await naturInfo(a.lat, a.lon);
     if (n) {
       rader.push(
@@ -166,6 +173,11 @@ async function korTest() {
     if (h?.narmaste) {
       rader.push(`Hållplats: ${h.narmaste.namn} (${h.narmaste.avstand} m)`);
       console.log(`   ✔ Närmaste hållplats: ${h.narmaste.namn}, ${h.narmaste.avstand} m`);
+      const restid = await restidTillStockholm(hus.lat, hus.lon);
+      if (restid != null) {
+        rader.push(`Till Stockholm C: ca ${fmtTid(restid)}`);
+        console.log(`   ✔ Restid till Stockholm C: ca ${fmtTid(restid)}`);
+      }
     } else {
       console.log("   ✘ Fick inget svar från ResRobot – kontrollera nyckeln.");
     }
