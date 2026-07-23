@@ -44,7 +44,9 @@ Gå till fliken **Actions** i repot, välj workflowen **Bostadsvakt** och klicka
 
 ## Anpassa kriterierna
 
-Allt ställs in i [config.json](config.json):
+**Enklast: via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. Funkar även i GitHub-appen i mobilen. Resultatet visas i körningens sammanfattning.
+
+Allt sparas i [config.json](config.json), som du förstås också kan redigera direkt:
 
 ```jsonc
 {
