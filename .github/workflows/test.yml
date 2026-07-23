@@ -1,0 +1,23 @@
+name: Testa Bostadsvakt
+
+# Körs bara manuellt: fliken Actions → Testa Bostadsvakt → Run workflow.
+# Testar hela kedjan (hållplats, natur, notis) med ett låtsashus –
+# fungerar även innan alla API-nycklar är på plats.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Kör testläge
+        env:
+          RESROBOT_API_KEY: ${{ secrets.RESROBOT_API_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: node src/index.js --test

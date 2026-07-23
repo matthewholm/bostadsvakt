@@ -62,6 +62,16 @@ Allt ställs in i [config.json](config.json):
 }
 ```
 
+## Testa direkt på GitHub
+
+Gå till fliken **Actions** → välj **Testa Bostadsvakt** i vänsterspalten → klicka **Run workflow**. Testet kör hela kedjan med ett låtsashus utanför Norrtälje och funkar även innan alla nycklar är på plats:
+
+- Utan några secrets alls: loggen visar natur-kollen och notisen som text.
+- Med `NTFY_TOPIC` satt: du får en riktig push i mobilen inom någon minut. 📱
+- Med `RESROBOT_API_KEY` satt: hållplatskollen testas också.
+
+Klicka på körningen i listan för att se loggen steg för steg.
+
 ## Köra lokalt (för test)
 
 Skapa en fil `.env` i projektmappen:

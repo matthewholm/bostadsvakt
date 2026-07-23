@@ -11,6 +11,12 @@ const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url
 const k = config.kriterier;
 const paus = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Testläge: kör hela kedjan på ett låtsashus utan att behöva Booli-nycklar.
+if (process.argv.includes("--test")) {
+  await korTest();
+  process.exit(0);
+}
+
 if (!harBooliNycklar()) {
   console.error(
     "Booli-nycklar saknas. Sätt miljövariablerna BOOLI_CALLER_ID och BOOLI_PRIVATE_KEY.\n" +
@@ -105,4 +111,46 @@ if (forstaKorning) {
   console.log(`\nFörsta körningen: ${nya} befintliga annonser sparade som "sedda". Från och med nästa körning får du notiser om allt nytt.`);
 } else {
   console.log(`\nKlart. ${nya} nya annonser, ${traffar} notiser skickade.`);
+}
+
+async function korTest() {
+  console.log("=== TESTLÄGE – låtsashus utanför Norrtälje ===\n");
+  const hus = { adress: "Testvägen 1", ort: "Norrtälje", lat: 59.7462, lon: 18.7734 };
+  const rader = [];
+
+  console.log("1. Hållplatskoll (Trafiklab ResRobot)...");
+  if (harResrobotNyckel()) {
+    const h = await narmasteHallplatser(hus.lat, hus.lon);
+    if (h?.narmaste) {
+      rader.push(`🚏 ${h.narmaste.namn} (${h.narmaste.avstand} m)`);
+      console.log(`   ✔ Närmaste hållplats: ${h.narmaste.namn}, ${h.narmaste.avstand} m`);
+    } else {
+      console.log("   ✘ Fick inget svar från ResRobot – kontrollera nyckeln.");
+    }
+  } else {
+    rader.push("🚏 (ResRobot-nyckel saknas ännu)");
+    console.log("   ⏭ Hoppar över – RESROBOT_API_KEY är inte satt.");
+  }
+
+  console.log("2. Natur-koll (OpenStreetMap)...");
+  const n = await naturInfo(hus.lat, hus.lon);
+  if (n) {
+    rader.push(`🌊 Vatten: ~${n.vattenM} m  🌲 Skog: ~${n.skogM} m  🏘️ Grannar: ${n.grannar}`);
+    console.log(`   ✔ Vatten ~${n.vattenM} m, skog ~${n.skogM} m, ${n.grannar} grannbyggnader`);
+  } else {
+    console.log("   ✘ Overpass svarade inte – testet fortsätter ändå.");
+  }
+
+  console.log("3. Skickar testnotis (ntfy)...");
+  await notis({
+    titel: "✅ Testnotis från Bostadsvakt",
+    meddelande: [`📍 ${hus.adress}, ${hus.ort} (låtsashus)`, ...rader, "Allt fungerar! 🎉"].join("\n"),
+    lank: "https://github.com/mathiasmholm/bostadsvakt",
+  });
+  console.log(
+    process.env.NTFY_TOPIC
+      ? "   ✔ Skickad! Kolla din mobil."
+      : "   ⏭ NTFY_TOPIC saknas – notisen skrevs bara ut ovan."
+  );
+  console.log("\n=== TEST KLART ===");
 }
