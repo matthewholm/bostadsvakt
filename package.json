@@ -1,0 +1,13 @@
+{
+  "name": "bostadsvakt",
+  "version": "1.0.0",
+  "description": "Bevakar nya villor till salu nära pendling, vatten och skog – och skickar push-notiser via ntfy.",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}

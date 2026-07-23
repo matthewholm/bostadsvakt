@@ -1,0 +1,88 @@
+# 🏡 Bostadsvakt
+
+Bevakar nya **villor till salu i Uppsala och Norrtälje** och skickar en push-notis till din mobil när det dyker upp ett hus som:
+
+- 🚏 ligger nära en hållplats (SL/UL – buss, pendeltåg, tåg)
+- 🌊 ligger nära vatten och/eller 🌲 skog
+- 🏘️ inte har för många grannar
+
+Körs gratis i GitHub Actions var 30:e minut – din dator behöver inte vara på.
+
+## Så funkar den
+
+1. **Booli API** – hämtar nya villaannonser för sökområdena i [config.json](config.json).
+2. **Trafiklab ResRobot** – hittar närmaste hållplats och närmaste tågstation från husets koordinater.
+3. **OpenStreetMap (Overpass)** – uppskattar avstånd till vatten och skog samt räknar byggnader inom 300 m (grannar). Ingen nyckel behövs.
+4. **ntfy.sh** – skickar push med adress, pris och alla avstånd, med länk direkt till annonsen.
+
+Redan sedda annonser sparas i `data/seen.json` så att du bara får notis en gång per hus. Allra första körningen skickar inga notiser – den bara "nollställer" mot dagens utbud.
+
+## Kom igång
+
+### 1. Skaffa API-nycklar (gratis)
+
+| Tjänst | Hur | Hemlighet(er) |
+|---|---|---|
+| **Booli** | Mejla en förfrågan om API-nyckel enligt instruktionerna på Boolis webbplats (sök "Booli API"). Du får ett `callerId` och en privat nyckel. | `BOOLI_CALLER_ID`, `BOOLI_PRIVATE_KEY` |
+| **Trafiklab** | Skapa gratiskonto på [developer.trafiklab.se](https://developer.trafiklab.se), skapa ett projekt och lägg till API:t **ResRobot v2.1**. | `RESROBOT_API_KEY` |
+| **ntfy** | Installera appen **ntfy** (App Store/Google Play). Prenumerera på ett eget hemligt ämne, t.ex. `bostadsvakt-x7k2p9q4` – välj något ogissbart, alla som kan namnet kan se notiserna. | `NTFY_TOPIC` |
+
+### 2. Lägg in hemligheterna i GitHub
+
+Gå till repot → **Settings → Secrets and variables → Actions → New repository secret** och lägg in de fyra hemligheterna ovan. Eller via terminalen:
+
+```
+gh secret set BOOLI_CALLER_ID
+gh secret set BOOLI_PRIVATE_KEY
+gh secret set RESROBOT_API_KEY
+gh secret set NTFY_TOPIC
+```
+
+### 3. Starta
+
+Gå till fliken **Actions** i repot, välj workflowen **Bostadsvakt** och klicka **Run workflow** (första gången). Därefter kör den automatiskt var 30:e minut kl 06–21.
+
+## Anpassa kriterierna
+
+Allt ställs in i [config.json](config.json):
+
+```jsonc
+{
+  "searches": [ { "namn": "Uppsala", "q": "Uppsala" } ],   // lägg till fler områden
+  "kriterier": {
+    "objectType": "villa",
+    "maxPris": null,                  // t.ex. 5000000
+    "maxAvståndHållplatsM": 1000,     // max meter till närmaste hållplats
+    "maxAvståndVattenM": 1500,
+    "maxAvståndSkogM": 500,
+    "kravVattenEllerSkog": true,      // minst ett av vatten/skog måste uppfyllas
+    "maxGrannarInom300m": 15
+  },
+  "notiser": { "endastTräffar": true } // false = notis om ALLA nya, träffar märks med 🎯
+}
+```
+
+## Köra lokalt (för test)
+
+Skapa en fil `.env` i projektmappen:
+
+```
+BOOLI_CALLER_ID=...
+BOOLI_PRIVATE_KEY=...
+RESROBOT_API_KEY=...
+NTFY_TOPIC=...
+```
+
+Kör sedan:
+
+```
+npm start
+```
+
+Utan `NTFY_TOPIC` skrivs notiserna bara ut i terminalen (torrkörning).
+
+## Bra att veta
+
+- Avstånden till vatten/skog mäts mot objektens mittpunkt i OpenStreetMap och är **ungefärliga** (men allt som rapporteras ligger inom 1,5 km).
+- "Grannar" = antal byggnader inom 300 m enligt OpenStreetMap – uthus och garage räknas också, så jämför siffror mellan hus snarare än att tolka dem exakt.
+- GitHub Actions cron är inte exakt på minuten – körningarna kan komma några minuter senare.
