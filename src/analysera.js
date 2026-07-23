@@ -44,9 +44,22 @@ const rader = [];
 
 if (a.rum && k.minRum && a.rum < k.minRum) brister.push(`${a.rum} rum (krav: minst ${k.minRum})`);
 
-const pos = await geokoda(a.adressFraga);
+let pos = null;
+for (const fraga of a.adressFragor ?? []) {
+  pos = await geokoda(fraga);
+  if (pos) break;
+  await new Promise((r) => setTimeout(r, 1100));
+}
 if (!pos) {
-  rader.push("Adressen kunde inte hittas på kartan – avstånden okända");
+  await notis({
+    titel: `Analys: Läge okänt · ${a.adress}`,
+    meddelande:
+      "Adressen kunde inte hittas på kartan, så avstånden gick inte att mäta. " +
+      "Prova igen om en stund – eller kontrollera annonsen manuellt.",
+    lank: a.url,
+  });
+  console.error("Geokodning misslyckades – notis om okänt läge skickad.");
+  process.exit(0);
 } else {
   console.log(`Koordinater: ${pos.lat}, ${pos.lon}`);
 

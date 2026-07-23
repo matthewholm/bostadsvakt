@@ -45,10 +45,10 @@ export async function hamtaMailAnnonser() {
 
   // Slå upp koordinater (varsamt: Nominatim vill ha max 1 anrop/sek)
   for (const a of annonser.values()) {
-    if (a.adressFraga) {
-      const pos = await geokoda(a.adressFraga);
-      if (pos) { a.lat = pos.lat; a.lon = pos.lon; }
+    for (const fraga of a.adressFragor ?? []) {
+      const pos = await geokoda(fraga);
       await paus(1100);
+      if (pos) { a.lat = pos.lat; a.lon = pos.lon; break; }
     }
   }
   return [...annonser.values()];
@@ -81,7 +81,7 @@ export function hittaAnnonser(text) {
       id: `booli-${m[1]}`,
       kalla: "Booli",
       url: `https://www.booli.se/annons/${m[1]}`,
-      typ: "", adress: `Booli-annons ${m[1]}`, ort: "", adressFraga: null,
+      typ: "", adress: `Booli-annons ${m[1]}`, ort: "", adressFragor: [],
       pris: null, rum: null, boarea: null, tomtarea: null, lat: null, lon: null,
     });
   }
@@ -90,23 +90,39 @@ export function hittaAnnonser(text) {
 }
 
 // Hemnets adress-slug bär på mycket: "villa-6rum-rimbo-norrtalje-kommun-vallbyvagen-10-21398433"
+// Ordet "kommun" skiljer område (före) från gatuadress (efter).
 export function tolkaHemnetSlug(slug) {
   const id = slug.match(/-(\d{6,})$/)?.[1];
   if (!id) return null;
   const delar = slug.replace(/-\d{6,}$/, "").split("-");
   const typ = delar.shift() ?? "";
   const rum = delar.find((d) => /^\d+rum$/.test(d));
-  const adressOrd = delar.filter((d) => !/^\d+rum$/.test(d) && d !== "rum");
-  const adress = adressOrd.join(" ");
+  const adressOrd = delar.filter((d) => /^\d+rum$/.test(d) === false && d !== "rum");
+
+  const ix = adressOrd.lastIndexOf("kommun");
+  const plats = ix >= 0 ? adressOrd.slice(0, ix) : []; // t.ex. ["raby","norrtalje"]
+  const gata = ix >= 0 ? adressOrd.slice(ix + 1) : adressOrd; // t.ex. ["norrbyggebyvagen","31"]
+  const kommunNamn = plats.at(-1) ?? "";
+
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const adress = [cap(gata.join(" ")), plats.map(cap).join(" ")].filter(Boolean).join(", ");
+
+  // Geokodningsfrågor i fallande precision: gata + hela platsen, gata + kommun, hela sluggen
+  const adressFragor = [...new Set([
+    [...gata, ...plats].join(" "),
+    [...gata, kommunNamn].filter(Boolean).join(" "),
+    adressOrd.join(" "),
+  ])].filter(Boolean);
+
   return {
     id: `hemnet-${id}`,
     kalla: "Hemnet",
     url: `https://www.hemnet.se/bostad/${slug}`,
     typ,
     rum: rum ? Number(rum.replace("rum", "")) : null,
-    adress: adress.charAt(0).toUpperCase() + adress.slice(1),
-    ort: "",
-    adressFraga: adress,
+    adress,
+    ort: plats.map(cap).join(" "),
+    adressFragor,
     pris: null, boarea: null, tomtarea: null, lat: null, lon: null,
   };
 }
