@@ -7,6 +7,7 @@ import { geokoda } from "./geocode.js";
 import { narmasteHallplatser, restidTillStockholm, harResrobotNyckel } from "./transit.js";
 import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
+import { lasTraffar, sparaTraffar } from "./matches.js";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const k = config.kriterier;
@@ -119,4 +120,30 @@ await notis({
   lon: pos?.lon,
   prioritet: traff ? 4 : 3,
 });
-console.log(traff ? "TRÄFF – notis skickad." : `Brister: ${brister.join("; ")} – notis skickad.`);
+
+// Spara i galleriet (manuellt analyserade hus hamnar också bland Bostäder)
+const lagrade = new Map(lasTraffar().map((t) => [t.id, t]));
+const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
+lagrade.set(a.id, {
+  ...lagrade.get(a.id),
+  id: a.id,
+  tidpunkt: new Date().toISOString(),
+  kalla: `${a.kalla} · analyserad`,
+  typ: typNamn,
+  omrade: a.ort || "",
+  adress: a.adress,
+  pris: a.pris ?? null,
+  rum: a.rum ?? null,
+  boarea: a.boarea ?? null,
+  tomtarea: a.tomtarea ?? null,
+  url: a.url,
+  bild: a.bild ?? null,
+  lat: pos?.lat ?? null,
+  lon: pos?.lon ?? null,
+  pendling,
+  omgivning,
+  uppfyller: traff,
+});
+sparaTraffar([...lagrade.values()]);
+
+console.log(traff ? "TRÄFF – notis skickad, sparad i galleriet." : `Brister: ${brister.join("; ")} – notis skickad, sparad i galleriet.`);
