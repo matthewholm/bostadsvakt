@@ -91,35 +91,37 @@ for (const a of annonser) {
   if (k.minBoarea && a.boarea && a.boarea < k.minBoarea) continue;
   if (k.minTomtarea && a.tomtarea && a.tomtarea < k.minTomtarea) continue;
 
-  const rader = [];
+  const pendling = [];
+  const omgivning = [];
+  const noteringar = [];
   let uppfyller = true;
 
   if (a.lat != null && a.lon != null) {
     const h = await narmasteHallplatser(a.lat, a.lon);
     if (h?.narmaste) {
-      rader.push(`Hållplats: ${h.narmaste.namn} · ${h.narmaste.avstand} m`);
+      pendling.push(`Hållplats: ${h.narmaste.namn} · ${h.narmaste.avstand} m`);
       if (h.narmasteTag && h.narmasteTag.namn !== h.narmaste.namn) {
-        rader.push(`Tåg: ${h.narmasteTag.namn} · ${h.narmasteTag.avstand} m`);
+        pendling.push(`Tåg: ${h.narmasteTag.namn} · ${h.narmasteTag.avstand} m`);
       }
       if (h.narmaste.avstand > k.maxAvståndHållplatsM) uppfyller = false;
     } else if (h) {
-      rader.push("Ingen hållplats inom 3 km");
+      pendling.push("Ingen hållplats inom 3 km");
       uppfyller = false;
     }
 
     const restid = await restidTillStockholm(a.lat, a.lon);
     if (restid != null) {
-      rader.push(`Till Stockholm C: ca ${fmtTid(restid)}`);
+      pendling.push(`Stockholm C: ca ${fmtTid(restid)}`);
       if (k.maxRestidStockholmMin && restid > k.maxRestidStockholmMin) uppfyller = false;
     }
 
     const n = await naturInfo(a.lat, a.lon);
     if (n) {
-      rader.push(
+      omgivning.push(
         `Vatten: ${n.vattenM != null ? "ca " + n.vattenM + " m" : "över 1,5 km"} · ` +
-          `Skog: ${n.skogM != null ? "ca " + n.skogM + " m" : "över 1,5 km"} · ` +
-          `Grannar: ${n.grannar}`
+          `Skog: ${n.skogM != null ? "ca " + n.skogM + " m" : "över 1,5 km"}`
       );
+      omgivning.push(`Grannar inom 300 m: ${n.grannar}`);
       const vattenOk = n.vattenM != null && n.vattenM <= k.maxAvståndVattenM;
       const skogOk = n.skogM != null && n.skogM <= k.maxAvståndSkogM;
       // "något" = vatten eller skog räcker, "båda" = båda krävs, "inget" = inget krav
@@ -130,7 +132,7 @@ for (const a of annonser) {
     }
     await paus(1500); // var snäll mot Overpass gratis-API:t
   } else {
-    rader.push("Plats okänd – avstånden kunde inte kontrolleras");
+    noteringar.push("Plats okänd – avstånden kunde inte kontrolleras");
   }
 
   if (config.notiser.endastTräffar && !uppfyller) {
@@ -140,19 +142,24 @@ for (const a of annonser) {
 
   traffar++;
   const pris = a.pris ? `${a.pris.toLocaleString("sv-SE")} kr` : "";
-  const fakta = [a.rum && `${a.rum} rum`, a.boarea && `${a.boarea} m²`, a.tomtarea && `tomt ${a.tomtarea} m²`]
+  const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
+  const fakta = [typNamn, a.rum && `${a.rum} rum`, a.boarea && `${a.boarea} m²`, a.tomtarea && `tomt ${a.tomtarea} m²`]
     .filter(Boolean)
     .join(" · ");
-  const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
+  const sektion = (rubrik, rader) => (rader.length ? ["", rubrik, ...rader] : []);
   await notis({
     titel: [uppfyller ? "Träff:" : "Ny:", typNamn, a.omrade ? `i ${a.omrade}` : "", pris ? `· ${pris}` : ""]
       .filter(Boolean).join(" "),
     meddelande: [
       a.adress,
       fakta,
-      ...rader,
-      (uppfyller ? "✓ Uppfyller alla dina krav" : "Uppfyller inte alla krav") + ` · via ${a.kalla}`,
-    ].filter(Boolean).join("\n"),
+      ...sektion("PENDLING", pendling),
+      ...sektion("OMGIVNING", omgivning),
+      ...sektion("OBS", noteringar),
+      "",
+      uppfyller ? "✓ Uppfyller alla dina krav" : "Uppfyller inte alla krav",
+      `via ${a.kalla}`,
+    ].join("\n"),
     lank: a.url,
     lat: a.lat,
     lon: a.lon,

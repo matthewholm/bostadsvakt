@@ -40,7 +40,8 @@ if (!a) {
 console.log(`Analyserar: ${a.adress} (${a.typ || "okänd typ"}${a.rum ? `, ${a.rum} rum` : ""})`);
 
 const brister = [];
-const rader = [];
+const pendling = [];
+const omgivning = [];
 
 if (a.rum && k.minRum && a.rum < k.minRum) brister.push(`${a.rum} rum (krav: minst ${k.minRum})`);
 
@@ -66,16 +67,16 @@ if (!pos) {
   if (harResrobotNyckel()) {
     const h = await narmasteHallplatser(pos.lat, pos.lon);
     if (h?.narmaste) {
-      rader.push(`Hållplats: ${h.narmaste.namn} · ${h.narmaste.avstand} m`);
+      pendling.push(`Hållplats: ${h.narmaste.namn} · ${h.narmaste.avstand} m`);
       if (h.narmaste.avstand > k.maxAvståndHållplatsM)
         brister.push(`hållplats ${h.narmaste.avstand} m bort (krav: ${k.maxAvståndHållplatsM} m)`);
     } else if (h) {
-      rader.push("Ingen hållplats inom 3 km");
+      pendling.push("Ingen hållplats inom 3 km");
       brister.push("ingen hållplats inom 3 km");
     }
     const restid = await restidTillStockholm(pos.lat, pos.lon);
     if (restid != null) {
-      rader.push(`Till Stockholm C: ca ${fmtTid(restid)}`);
+      pendling.push(`Stockholm C: ca ${fmtTid(restid)}`);
       if (k.maxRestidStockholmMin && restid > k.maxRestidStockholmMin)
         brister.push(`restid ${fmtTid(restid)} (krav: ${fmtTid(k.maxRestidStockholmMin)})`);
     }
@@ -83,11 +84,11 @@ if (!pos) {
 
   const n = await naturInfo(pos.lat, pos.lon);
   if (n) {
-    rader.push(
+    omgivning.push(
       `Vatten: ${n.vattenM != null ? "ca " + n.vattenM + " m" : "över 1,5 km"} · ` +
-        `Skog: ${n.skogM != null ? "ca " + n.skogM + " m" : "över 1,5 km"} · ` +
-        `Grannar: ${n.grannar}`
+        `Skog: ${n.skogM != null ? "ca " + n.skogM + " m" : "över 1,5 km"}`
     );
+    omgivning.push(`Grannar inom 300 m: ${n.grannar}`);
     const vattenOk = n.vattenM != null && n.vattenM <= k.maxAvståndVattenM;
     const skogOk = n.skogM != null && n.skogM <= k.maxAvståndSkogM;
     const krav = k.kravNatur ?? "något";
@@ -99,12 +100,20 @@ if (!pos) {
 }
 
 const traff = brister.length === 0;
+const sektion = (rubrik, rader) => (rader.length ? ["", rubrik, ...rader] : []);
 await notis({
   titel: traff ? `Analys: Träff · ${a.adress}` : `Analys: ${a.adress}`,
-  meddelande: [
-    ...rader,
-    traff ? "✓ Uppfyller alla dina krav" : `Brister: ${brister.join("; ")}`,
-  ].join("\n"),
+  meddelande: (() => {
+    const fakta = [a.typ && a.typ.charAt(0).toUpperCase() + a.typ.slice(1), a.rum && `${a.rum} rum`]
+      .filter(Boolean).join(" · ");
+    return [
+      a.adress,
+      ...(fakta ? [fakta] : []),
+      ...sektion("PENDLING", pendling),
+      ...sektion("OMGIVNING", omgivning),
+      ...sektion("BEDÖMNING", traff ? ["✓ Uppfyller alla dina krav"] : brister.map((b) => `✗ ${b}`)),
+    ].join("\n");
+  })(),
   lank: a.url,
   lat: pos?.lat,
   lon: pos?.lon,
