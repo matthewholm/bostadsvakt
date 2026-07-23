@@ -1,6 +1,6 @@
 // Skickar push-notiser via ntfy.sh med knappar (annons + karta) och
 // prioritet. Utan NTFY_TOPIC loggas notisen bara i konsolen.
-export async function notis({ titel, meddelande, lank, lat, lon, prioritet }) {
+export async function notis({ titel, meddelande, lank, lat, lon, prioritet, bild }) {
   const topic = process.env.NTFY_TOPIC;
   if (!topic) {
     console.log(`\n[TORRKÖRNING – ingen NTFY_TOPIC satt]\n${titel}\n${meddelande}\n${lank ?? ""}`);
@@ -10,6 +10,7 @@ export async function notis({ titel, meddelande, lank, lat, lon, prioritet }) {
   const body = { topic, title: titel, message: meddelande };
   if (lank) body.click = lank;
   if (prioritet) body.priority = prioritet; // 4 = hög (träffar), 3 = normal
+  if (bild) body.attach = bild; // husbild ur bevakningsmejlet
 
   const knappar = [];
   if (lank) knappar.push({ action: "view", label: "Öppna annonsen", url: lank });

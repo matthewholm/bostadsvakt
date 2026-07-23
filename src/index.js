@@ -157,6 +157,7 @@ for (const a of annonser) {
     lat: a.lat,
     lon: a.lon,
     prioritet: uppfyller ? 4 : 3,
+    bild: a.bild,
   });
   console.log(`  Notis skickad: ${a.adress} (${a.kalla})`);
 }

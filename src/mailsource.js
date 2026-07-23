@@ -59,6 +59,19 @@ export function hittaAnnonser(text) {
   const avkodad = text + "\n" + safeDecode(text);
   const resultat = new Map();
 
+  // Husbilder: i mejlens HTML ligger fotot oftast som <img> inuti samma
+  // <a>-tagg som länkar till annonsen – para ihop bild med annons-id.
+  const bilder = new Map();
+  for (const m of avkodad.matchAll(/<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    const href = m[1] + " " + safeDecode(m[1]);
+    const img = m[2].match(/<img\b[^>]*src="(https?:\/\/[^"]+?)"/i)?.[1];
+    if (!img || /logo|icon|spacer|pixel/i.test(img)) continue;
+    const hemnetId = href.match(/hemnet\.se\/bostad\/[a-z0-9-]*?-(\d{6,})/)?.[1];
+    if (hemnetId && !bilder.has(`hemnet-${hemnetId}`)) bilder.set(`hemnet-${hemnetId}`, img);
+    const booliId = href.match(/booli\.se\/(?:annons|bostad)\/(\d+)/)?.[1];
+    if (booliId && !bilder.has(`booli-${booliId}`)) bilder.set(`booli-${booliId}`, img);
+  }
+
   for (const m of avkodad.matchAll(/https?:\/\/(?:www\.)?hemnet\.se\/bostad\/([a-z0-9-]+)/g)) {
     const a = tolkaHemnetSlug(m[1]);
     if (a) resultat.set(a.id, a);
@@ -72,6 +85,7 @@ export function hittaAnnonser(text) {
       pris: null, rum: null, boarea: null, tomtarea: null, lat: null, lon: null,
     });
   }
+  for (const a of resultat.values()) a.bild = bilder.get(a.id) ?? null;
   return [...resultat.values()];
 }
 
