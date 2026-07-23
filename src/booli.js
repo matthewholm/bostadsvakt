@@ -41,7 +41,7 @@ export async function sokAnnonser({ q, objectType = "villa", limit = 100 }) {
 
 function normalisera(l) {
   return {
-    id: String(l.booliId ?? l.id),
+    id: `booli-${l.booliId ?? l.id}`,
     pris: l.listPrice ?? null,
     typ: l.objectType ?? "",
     adress: l.location?.address?.streetAddress ?? "Okänd adress",

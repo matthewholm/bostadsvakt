@@ -9,5 +9,9 @@
   "engines": {
     "node": ">=22"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "imapflow": "^1.5.0",
+    "mailparser": "^3.9.14"
+  }
 }

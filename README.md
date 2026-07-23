@@ -17,13 +17,31 @@ Körs gratis i GitHub Actions var 30:e minut – din dator behöver inte vara p�
 
 Redan sedda annonser sparas i `data/seen.json` så att du bara får notis en gång per hus. Allra första körningen skickar inga notiser – den bara "nollställer" mot dagens utbud.
 
+## Datakällor – välj en eller båda
+
+Appen kan hämta annonser på två sätt. Det räcker med en av dem; har du båda får du bäst täckning (dubbletter räknas bara en gång):
+
+### A. Bevakningsmejl från Hemnet/Booli (ingen API-nyckel behövs)
+
+Låt Hemnet och Booli göra sökjobbet – appen läser deras bevakningsmejl i en egen inkorg, geokodar adressen (OpenStreetMap Nominatim) och kör alla dina kriterier innan den bestämmer om du ska notifieras.
+
+1. **Skapa en dedikerad Gmail-adress** (t.ex. `dittnamn.bostadsvakt@gmail.com`). Aktivera tvåstegsverifiering och skapa ett **app-lösenord** ([myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)).
+2. **Skapa bevakningar** på [hemnet.se](https://www.hemnet.se) och/eller [booli.se](https://www.booli.se) för dina områden och hustyper, med mejlutskick ("direkt" hellre än dagligen) till den adressen.
+3. **Lägg in secrets**: `IMAP_USER` (mejladressen) och `IMAP_PASSWORD` (app-lösenordet). Annan mejlleverantör än Gmail? Sätt även `IMAP_HOST`.
+
+Appen läser bara olästa mejl från Hemnet/Booli och markerar dem som lästa efteråt. Sätt bevakningarna brett (bara område + hustyp) och låt appen sköta finfiltret – då kan du ändra kriterier i panelen utan att röra Hemnet/Booli.
+
+### B. Boolis API
+
+Kräver `BOOLI_CALLER_ID` + `BOOLI_PRIVATE_KEY`. Boolis publika API-sida är nedtagen, men API:t svarar fortfarande – mejla `api@booli.se` och be om en nyckel för privat, icke-kommersiellt bruk.
+
 ## Kom igång
 
-### 1. Skaffa API-nycklar (gratis)
+### 1. Skaffa nycklar (gratis)
 
 | Tjänst | Hur | Hemlighet(er) |
 |---|---|---|
-| **Booli** | Mejla en förfrågan om API-nyckel enligt instruktionerna på Boolis webbplats (sök "Booli API"). Du får ett `callerId` och en privat nyckel. | `BOOLI_CALLER_ID`, `BOOLI_PRIVATE_KEY` |
+| **Datakälla** | Se avsnittet ovan – mejlbevakning (A) och/eller Booli-API (B). | `IMAP_USER`, `IMAP_PASSWORD` eller `BOOLI_CALLER_ID`, `BOOLI_PRIVATE_KEY` |
 | **Trafiklab** | Skapa gratiskonto på [developer.trafiklab.se](https://developer.trafiklab.se), skapa ett projekt och lägg till API:t **ResRobot v2.1**. | `RESROBOT_API_KEY` |
 | **ntfy** | Installera appen **ntfy** (App Store/Google Play). Prenumerera på ett eget hemligt ämne, t.ex. `bostadsvakt-x7k2p9q4` – välj något ogissbart, alla som kan namnet kan se notiserna. | `NTFY_TOPIC` |
 
