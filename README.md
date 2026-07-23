@@ -44,7 +44,9 @@ Gå till fliken **Actions** i repot, välj workflowen **Bostadsvakt** och klicka
 
 ## Anpassa kriterierna
 
-**Enklast: via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. Funkar även i GitHub-appen i mobilen. Resultatet visas i körningens sammanfattning.
+**Allra enklast: [kontrollpanelen](https://mathiasmholm.github.io/bostadsvakt-panel/)** — en webbsida med reglage för alla kriterier, knappar för att köra test/bevakning och lista över senaste körningarna. Logga in med en fine-grained GitHub-token (Contents + Actions, read/write, endast detta repo). Koden ligger i [bostadsvakt-panel](https://github.com/mathiasmholm/bostadsvakt-panel).
+
+**Eller via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. Funkar även i GitHub-appen i mobilen. Resultatet visas i körningens sammanfattning.
 
 Allt sparas i [config.json](config.json), som du förstås också kan redigera direkt:
 
