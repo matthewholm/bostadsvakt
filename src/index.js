@@ -88,15 +88,17 @@ for (const a of annonser) {
     console.log(`  Fel hustyp (${a.typ}): ${a.adress}`);
     continue;
   }
-  if (k.maxPris && a.pris && a.pris > k.maxPris) continue;
-  if (k.minRum && a.rum && a.rum < k.minRum) continue;
-  if (k.minBoarea && a.boarea && a.boarea < k.minBoarea) continue;
-  if (k.minTomtarea && a.tomtarea && a.tomtarea < k.minTomtarea) continue;
-
   const pendling = [];
   const omgivning = [];
   const noteringar = [];
   let uppfyller = true;
+
+  // Kriterierna avgör om huset är en "Träff" – men alla hus sparas ändå till
+  // flödet (Bostäder), så man kan bläddra och hjärta även nästan-träffar.
+  if (k.maxPris && a.pris && a.pris > k.maxPris) uppfyller = false;
+  if (k.minRum && a.rum && a.rum < k.minRum) uppfyller = false;
+  if (k.minBoarea && a.boarea && a.boarea < k.minBoarea) uppfyller = false;
+  if (k.minTomtarea && a.tomtarea && a.tomtarea < k.minTomtarea) uppfyller = false;
 
   if (a.lat != null && a.lon != null) {
     const h = await narmasteHallplatser(a.lat, a.lon);
@@ -135,19 +137,44 @@ for (const a of annonser) {
     await paus(1500); // var snäll mot Overpass gratis-API:t
   } else {
     noteringar.push("Plats okänd – avstånden kunde inte kontrolleras");
+    uppfyller = false;
   }
 
-  if (config.notiser.endastTräffar && !uppfyller) {
-    console.log(`  Ny men uppfyller inte kriterierna: ${a.adress}`);
-    continue;
-  }
-
-  traffar++;
   const pris = a.pris ? `${a.pris.toLocaleString("sv-SE")} kr` : "";
   const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
   const fakta = [typNamn, a.rum && `${a.rum} rum`, a.boarea && `${a.boarea} m²`, a.tomtarea && `tomt ${a.tomtarea} m²`]
     .filter(Boolean)
     .join(" · ");
+
+  // Spara ALLA hus till flödet (Bostäder), behåll ev. panel-flaggor
+  traffarLagrade.set(a.id, {
+    ...traffarLagrade.get(a.id),
+    id: a.id,
+    tidpunkt: new Date().toISOString(),
+    kalla: a.kalla,
+    typ: typNamn,
+    omrade: a.omrade || a.ort || "",
+    adress: a.adress,
+    pris: a.pris ?? null,
+    rum: a.rum ?? null,
+    boarea: a.boarea ?? null,
+    tomtarea: a.tomtarea ?? null,
+    url: a.url,
+    bild: a.bild ?? null,
+    lat: a.lat ?? null,
+    lon: a.lon ?? null,
+    pendling,
+    omgivning,
+    uppfyller,
+  });
+
+  // Notis: bara för träffar (eller för alla om så valts), aldrig på första körningen
+  if (forstaKorning || (config.notiser.endastTräffar && !uppfyller)) {
+    console.log(`  ${uppfyller ? "Träff" : "Ny"} sparad utan notis: ${a.adress}`);
+    continue;
+  }
+
+  traffar++;
   const sektion = (rubrik, rader) => (rader.length ? ["", rubrik, ...rader] : []);
   await notis({
     titel: [uppfyller ? "Träff:" : "Ny:", typNamn, a.omrade ? `i ${a.omrade}` : "", pris ? `· ${pris}` : ""]
@@ -169,28 +196,6 @@ for (const a of annonser) {
     bild: a.bild,
   });
   console.log(`  Notis skickad: ${a.adress} (${a.kalla})`);
-
-  // Spara träffen så kontrollpanelens galleri kan visa den (behåll ev. flaggor)
-  traffarLagrade.set(a.id, {
-    ...traffarLagrade.get(a.id),
-    id: a.id,
-    tidpunkt: new Date().toISOString(),
-    kalla: a.kalla,
-    typ: typNamn,
-    omrade: a.omrade || a.ort || "",
-    adress: a.adress,
-    pris: a.pris ?? null,
-    rum: a.rum ?? null,
-    boarea: a.boarea ?? null,
-    tomtarea: a.tomtarea ?? null,
-    url: a.url,
-    bild: a.bild ?? null,
-    lat: a.lat ?? null,
-    lon: a.lon ?? null,
-    pendling,
-    omgivning,
-    uppfyller,
-  });
 }
 
 sparaSedda(sedda);
