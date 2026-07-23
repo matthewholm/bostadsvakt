@@ -41,7 +41,7 @@ for (const [env, falt] of [
 }
 
 const kravNatur = jaNej("KRAV_NATUR");
-if (kravNatur !== undefined) k.kravVattenEllerSkog = kravNatur;
+if (kravNatur !== undefined) k.kravNatur = kravNatur ? "något" : "inget";
 
 const endastTraffar = jaNej("ENDAST_TRAFFAR");
 if (endastTraffar !== undefined) config.notiser.endastTräffar = endastTraffar;

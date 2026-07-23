@@ -54,6 +54,9 @@ for (const sok of config.searches) {
     if (forstaKorning) continue;
 
     if (k.maxPris && a.pris && a.pris > k.maxPris) continue;
+    if (k.minRum && a.rum && a.rum < k.minRum) continue;
+    if (k.minBoarea && a.boarea && a.boarea < k.minBoarea) continue;
+    if (k.minTomtarea && a.tomtarea && a.tomtarea < k.minTomtarea) continue;
 
     const rader = [];
     let uppfyller = true;
@@ -80,7 +83,10 @@ for (const sok of config.searches) {
         );
         const vattenOk = n.vattenM != null && n.vattenM <= k.maxAvståndVattenM;
         const skogOk = n.skogM != null && n.skogM <= k.maxAvståndSkogM;
-        if (k.kravVattenEllerSkog && !vattenOk && !skogOk) uppfyller = false;
+        // "något" = vatten eller skog räcker, "båda" = båda krävs, "inget" = inget krav
+        const krav = k.kravNatur ?? (k.kravVattenEllerSkog === false ? "inget" : "något");
+        if (krav === "något" && !vattenOk && !skogOk) uppfyller = false;
+        if (krav === "båda" && !(vattenOk && skogOk)) uppfyller = false;
         if (n.grannar > k.maxGrannarInom300m) uppfyller = false;
       }
       await paus(1500); // var snäll mot Overpass gratis-API:t
