@@ -47,7 +47,8 @@ if (harBooliNycklar()) {
     try {
       const lista = await sokAnnonser({ q: sok.q, objectType: k.objectType });
       console.log(`  ${lista.length} annonser hittade.`);
-      annonser.push(...lista.map((a) => ({ ...a, kalla: "Booli", omrade: sok.namn })));
+      // bulk: API:t returnerar hela utbudet – första körningen ska inte ge notisflod
+      annonser.push(...lista.map((a) => ({ ...a, kalla: "Booli", omrade: sok.namn, bulk: true })));
     } catch (err) {
       console.error(`  Fel vid sökning: ${err.message}`);
     }
@@ -75,9 +76,9 @@ for (const a of annonser) {
   sedda.add(a.id);
   nya++;
 
-  // Vid allra första körningen markeras allt som sett utan notiser,
-  // annars skulle du dränkas i pushar för gamla annonser.
-  if (forstaKorning) continue;
+  // Vid allra första API-körningen markeras hela utbudet som sett utan
+  // notiser – mejlkällan innehåller däremot bara nyheter och notifierar alltid.
+  if (forstaKorning && a.bulk) continue;
 
   // Hustyp (mejlkällan kan innehålla andra typer än de valda)
   if (a.typ && !tillatnaTyper.includes(normTyp(a.typ))) {
