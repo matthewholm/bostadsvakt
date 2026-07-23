@@ -1,0 +1,31 @@
+name: Analysera annons
+
+# Startas från kontrollpanelen (eller Actions-fliken) med en Hemnet-länk.
+# Kör hela analysen på det huset och pushar resultatet till mobilen.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Länk till annonsen (hemnet.se/bostad/...)"
+        required: true
+        type: string
+
+jobs:
+  analysera:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Analysera annonsen
+        env:
+          ANNONS_URL: ${{ inputs.url }}
+          RESROBOT_API_KEY: ${{ secrets.RESROBOT_API_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: node src/analysera.js
