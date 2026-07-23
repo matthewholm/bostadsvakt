@@ -8,6 +8,7 @@ import { narmasteHallplatser, restidTillStockholm, harResrobotNyckel } from "./t
 import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
 import { lasSedda, sparaSedda } from "./state.js";
+import { lasTraffar, sparaTraffar } from "./matches.js";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const k = config.kriterier;
@@ -36,6 +37,7 @@ if (!harResrobotNyckel()) {
 
 const sedda = lasSedda();
 const forstaKorning = sedda.size === 0;
+const traffarLagrade = new Map(lasTraffar().map((t) => [t.id, t]));
 let nya = 0;
 let traffar = 0;
 
@@ -167,9 +169,32 @@ for (const a of annonser) {
     bild: a.bild,
   });
   console.log(`  Notis skickad: ${a.adress} (${a.kalla})`);
+
+  // Spara träffen så kontrollpanelens galleri kan visa den (behåll ev. flaggor)
+  traffarLagrade.set(a.id, {
+    ...traffarLagrade.get(a.id),
+    id: a.id,
+    tidpunkt: new Date().toISOString(),
+    kalla: a.kalla,
+    typ: typNamn,
+    omrade: a.omrade || a.ort || "",
+    adress: a.adress,
+    pris: a.pris ?? null,
+    rum: a.rum ?? null,
+    boarea: a.boarea ?? null,
+    tomtarea: a.tomtarea ?? null,
+    url: a.url,
+    bild: a.bild ?? null,
+    lat: a.lat ?? null,
+    lon: a.lon ?? null,
+    pendling,
+    omgivning,
+    uppfyller,
+  });
 }
 
 sparaSedda(sedda);
+sparaTraffar([...traffarLagrade.values()]);
 
 if (forstaKorning) {
   console.log(`\nFörsta körningen: ${nya} befintliga annonser sparade som "sedda". Från och med nästa körning får du notiser om allt nytt.`);

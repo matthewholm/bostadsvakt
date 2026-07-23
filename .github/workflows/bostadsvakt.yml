@@ -37,13 +37,13 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: node src/index.js
 
-      - name: Spara sedda annonser
+      - name: Spara sedda annonser och träffar
         run: |
-          if ! git diff --quiet data/seen.json; then
+          if ! git diff --quiet data/; then
             git config user.name "bostadsvakt-bot"
             git config user.email "actions@users.noreply.github.com"
-            git add data/seen.json
-            git commit -m "Uppdatera sedda annonser"
+            git add data/
+            git commit -m "Uppdatera sedda annonser och träffar"
             git pull --rebase
             git push
           fi
