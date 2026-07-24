@@ -63,7 +63,7 @@ if (harBooliNycklar()) {
 if (harImap()) {
   console.log("\nLäser bevakningsmejl (Hemnet/Booli)...");
   try {
-    const lista = await hamtaMailAnnonser();
+    const lista = await hamtaMailAnnonser(config.searches.map((s) => s.namn));
     console.log(`  ${lista.length} annonser i mejlen.`);
     annonser.push(...lista);
   } catch (err) {
@@ -244,7 +244,7 @@ async function korTest() {
   console.log("3. Mejlkälla (IMAP)...");
   if (harImap()) {
     try {
-      const lista = await hamtaMailAnnonser();
+      const lista = await hamtaMailAnnonser(config.searches.map((s) => s.namn));
       console.log(`   ✔ Inkorgen nådd – ${lista.length} annonser i olästa bevakningsmejl.`);
     } catch (err) {
       console.log(`   ✘ Kunde inte läsa inkorgen: ${err.message}`);
