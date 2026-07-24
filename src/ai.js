@@ -9,18 +9,26 @@ export function harAnthropicNyckel() {
   return Boolean(process.env.ANTHROPIC_API_KEY);
 }
 
-export async function skrivBedomning({ adress, typ, fakta, k, pendling, omgivning, poang }) {
+export async function skrivBedomning({ adress, typ, fakta, pris, k, pendling, omgivning, poang }) {
   if (!harAnthropicNyckel()) return null;
 
+  const budgetKrav = [
+    k.maxPris ? `maxpris ${k.maxPris.toLocaleString("sv-SE")} kr` : "",
+    k.minRum ? `minst ${k.minRum} rum` : "",
+    k.minBoarea ? `minst ${k.minBoarea} m² boarea` : "",
+    k.minTomtarea ? `minst ${k.minTomtarea} m² tomt` : "",
+  ].filter(Boolean).join(", ");
+
   const prompt = [
-    `Hus: ${adress}${fakta ? ", " + fakta : ""}.`,
+    `Hus: ${adress}${fakta ? ", " + fakta : ""}${pris ? `, pris ${pris.toLocaleString("sv-SE")} kr` : ""}.`,
     pendling.length ? `Pendling: ${pendling.join(" · ")}.` : "",
     omgivning.length ? `Omgivning: ${omgivning.join(" · ")}.` : "",
     poang != null ? `Matchningspoäng: ${poang}/100.` : "",
     `Krav att bedöma mot: max hållplatsavstånd ${k.maxAvståndHållplatsM} m, ` +
       `max vattenavstånd ${k.maxAvståndVattenM} m, max skogsavstånd ${k.maxAvståndSkogM} m, ` +
       `naturkrav "${k.kravNatur ?? "något"}", max grannar inom 300 m: ${k.maxGrannarInom300m}` +
-      (k.maxRestidStockholmMin ? `, max restid Stockholm C ${k.maxRestidStockholmMin} min` : "") + ".",
+      (k.maxRestidStockholmMin ? `, max restid Stockholm C ${k.maxRestidStockholmMin} min` : "") +
+      (budgetKrav ? `, ${budgetKrav}` : "") + ".",
   ].filter(Boolean).join("\n");
 
   try {

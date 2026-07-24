@@ -165,7 +165,7 @@ for (const a of annonser) {
   const fakta = [typNamn, a.rum && `${a.rum} rum`, a.boarea && `${a.boarea} m²`, a.tomtarea && `tomt ${a.tomtarea} m²`]
     .filter(Boolean)
     .join(" · ");
-  const aiOmdome = await skrivBedomning({ adress: a.adress, typ: typNamn, fakta, k, pendling, omgivning, poang });
+  const aiOmdome = await skrivBedomning({ adress: a.adress, typ: typNamn, fakta, pris: a.pris, k, pendling, omgivning, poang });
 
   // Spara ALLA hus till flödet (Bostäder), behåll ev. panel-flaggor
   traffarLagrade.set(a.id, {

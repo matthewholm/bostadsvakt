@@ -112,7 +112,7 @@ const traff = brister.length === 0;
 const poang = beraknaPoang(k, matt);
 const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
 const fakta = [typNamn, a.rum && `${a.rum} rum`].filter(Boolean).join(" · ");
-const aiOmdome = await skrivBedomning({ adress: a.adress, typ: typNamn, fakta, k, pendling, omgivning, poang });
+const aiOmdome = await skrivBedomning({ adress: a.adress, typ: typNamn, fakta, pris: a.pris, k, pendling, omgivning, poang });
 const sektion = (rubrik, rader) => (rader.length ? ["", rubrik, ...rader] : []);
 await notis({
   titel: traff ? `Analys: Träff · ${a.adress}` : `Analys: ${a.adress}`,
