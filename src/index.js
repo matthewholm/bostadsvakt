@@ -83,22 +83,33 @@ for (const a of annonser) {
   // notiser – mejlkällan innehåller däremot bara nyheter och notifierar alltid.
   if (forstaKorning && a.bulk) continue;
 
-  // Hustyp (mejlkällan kan innehålla andra typer än de valda)
+  // Hårda filter: hustyp, pris, rum och yta. Hus utanför dessa visas inte
+  // alls (bara uteslutna om värdet är känt). Läge/natur avgör Träff nedan.
   if (a.typ && !tillatnaTyper.includes(normTyp(a.typ))) {
-    console.log(`  Fel hustyp (${a.typ}): ${a.adress}`);
+    console.log(`  Utanför filter (hustyp ${a.typ}): ${a.adress}`);
     continue;
   }
+  if (k.maxPris && a.pris && a.pris > k.maxPris) {
+    console.log(`  Utanför filter (pris ${a.pris} > ${k.maxPris}): ${a.adress}`);
+    continue;
+  }
+  if (k.minRum && a.rum && a.rum < k.minRum) {
+    console.log(`  Utanför filter (rum ${a.rum} < ${k.minRum}): ${a.adress}`);
+    continue;
+  }
+  if (k.minBoarea && a.boarea && a.boarea < k.minBoarea) {
+    console.log(`  Utanför filter (boarea ${a.boarea} < ${k.minBoarea}): ${a.adress}`);
+    continue;
+  }
+  if (k.minTomtarea && a.tomtarea && a.tomtarea < k.minTomtarea) {
+    console.log(`  Utanför filter (tomt ${a.tomtarea} < ${k.minTomtarea}): ${a.adress}`);
+    continue;
+  }
+
   const pendling = [];
   const omgivning = [];
   const noteringar = [];
   let uppfyller = true;
-
-  // Kriterierna avgör om huset är en "Träff" – men alla hus sparas ändå till
-  // flödet (Bostäder), så man kan bläddra och hjärta även nästan-träffar.
-  if (k.maxPris && a.pris && a.pris > k.maxPris) uppfyller = false;
-  if (k.minRum && a.rum && a.rum < k.minRum) uppfyller = false;
-  if (k.minBoarea && a.boarea && a.boarea < k.minBoarea) uppfyller = false;
-  if (k.minTomtarea && a.tomtarea && a.tomtarea < k.minTomtarea) uppfyller = false;
 
   if (a.lat != null && a.lon != null) {
     const h = await narmasteHallplatser(a.lat, a.lon);
@@ -196,6 +207,18 @@ for (const a of annonser) {
     bild: a.bild,
   });
   console.log(`  Notis skickad: ${a.adress} (${a.kalla})`);
+}
+
+// Städa flödet: ta bort tidigare sparade hus som numera ligger utanför de
+// hårda filtren (t.ex. om maxpris sänkts) så listan alltid speglar kraven.
+for (const [id, t] of traffarLagrade) {
+  const utanfor =
+    (t.typ && !tillatnaTyper.includes(normTyp(t.typ))) ||
+    (k.maxPris && t.pris && t.pris > k.maxPris) ||
+    (k.minRum && t.rum && t.rum < k.minRum) ||
+    (k.minBoarea && t.boarea && t.boarea < k.minBoarea) ||
+    (k.minTomtarea && t.tomtarea && t.tomtarea < k.minTomtarea);
+  if (utanfor) traffarLagrade.delete(id);
 }
 
 sparaSedda(sedda);
