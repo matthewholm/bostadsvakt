@@ -35,8 +35,7 @@ export async function hamtaMailAnnonser(areas = []) {
       const avsandare = (mail.from?.text ?? "").toLowerCase();
       if (!/hemnet|booli/.test(avsandare)) continue;
 
-      const text = (mail.html || "") + "\n" + (mail.text || "");
-      for (const a of hittaAnnonser(text)) annonser.set(a.id, a);
+      for (const a of hittaAnnonser(mail.html || "", mail.text || "")) annonser.set(a.id, a);
       await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
     }
   } finally {
@@ -73,9 +72,12 @@ function byggFragor(a, areas) {
 }
 
 // Hittar Hemnet-/Booli-annonser i mejlets HTML. Parar ihop annons-id (ur
-// länken, ev. dubbel-kodad i en spårningslänk) med adress och bild.
-export function hittaAnnonser(text) {
+// länken, ev. dubbel-kodad i en spårningslänk) med adress, bild och de
+// synliga fälten (typ, område, pris, boarea, rum, tomt).
+export function hittaAnnonser(html, plaintext = "") {
+  const text = html;
   const resultat = new Map();
+  const detaljer = laddaDetaljer(html);
 
   const nyBooli = (booliId) => ({
     id: `booli-${booliId}`,
@@ -120,7 +122,7 @@ export function hittaAnnonser(text) {
   }
 
   // 2) Fallback: fånga länkar som inte satt i en <a> (dekoda hela texten)
-  const avkodad = flerAvkoda(text);
+  const avkodad = flerAvkoda(html + "\n" + plaintext);
   for (const m of avkodad.matchAll(/booli\.se\/annons\/(\d+)/g)) {
     if (!resultat.has(`booli-${m[1]}`)) resultat.set(`booli-${m[1]}`, nyBooli(m[1]));
   }
@@ -128,7 +130,57 @@ export function hittaAnnonser(text) {
     const bas = tolkaHemnetSlug(m[1]);
     if (bas && !resultat.has(bas.id)) resultat.set(bas.id, bas);
   }
+
+  // 3) Fyll på med synliga fält (pris, yta m.m.) matchat på adress
+  for (const e of resultat.values()) {
+    const d = detaljer.get(normAdr(e.adress)) || detaljer.get(normAdr((e.adress || "").split(",")[0]));
+    if (!d) continue;
+    if (!e.typ) e.typ = d.typ;
+    if (!e.ort) e.ort = d.ort;
+    if (e.pris == null) e.pris = d.pris;
+    if (e.boarea == null) e.boarea = d.boarea;
+    if (e.rum == null) e.rum = d.rum;
+    if (e.tomtarea == null) e.tomtarea = d.tomtarea;
+  }
   return [...resultat.values()];
+}
+
+const normAdr = (s) => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
+
+// Läser de synliga husblocken ur mejlets HTML. Varje block ser ut som:
+//   Idegransvägen 35 / Villa · Skölsta / 4 800 000 kr / 125 m²   6 rum
+export function laddaDetaljer(html) {
+  const rader = html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<[^>]+>/g, "\n")
+    .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&")
+    .replace(/&sup2;/gi, "²").replace(/&middot;|&#183;/gi, "·")
+    .split("\n").map((s) => s.trim()).filter(Boolean);
+
+  const detaljer = new Map();
+  const typRad = /^(villa|fritidshus|radhus|parhus|kedjehus|gård|gård|tomt|lägenhet)\s*[·•]\s*(.+)$/i;
+  for (let i = 1; i < rader.length; i++) {
+    const m = rader[i].match(typRad);
+    if (!m) continue;
+    const adress = rader[i - 1];
+    if (!adress || adress.length > 60) continue;
+
+    let pris = null, boarea = null, rum = null, tomtarea = null;
+    for (let j = i + 1; j < Math.min(i + 4, rader.length); j++) {
+      const r = rader[j];
+      const p = r.match(/([\d][\d\s]*)\s*kr/);
+      if (p && pris === null) pris = Number(p[1].replace(/\s/g, ""));
+      const areor = [...r.matchAll(/(\d[\d\s]*)\s*(?:m²|m2|kvm)/gi)].map((x) => Number(x[1].replace(/\s/g, "")));
+      const rm = r.match(/(\d+(?:[.,]\d)?)\s*rum/i);
+      if (rm && rum === null) rum = Number(rm[1].replace(",", "."));
+      if (areor.length && boarea === null) {
+        boarea = areor[0];
+        if (areor.length > 1) tomtarea = areor[areor.length - 1];
+      }
+    }
+    detaljer.set(normAdr(adress), { typ: m[1].toLowerCase(), ort: m[2].trim(), pris, boarea, rum, tomtarea });
+  }
+  return detaljer;
 }
 
 // Hemnets adress-slug bär på mycket: "villa-6rum-rimbo-norrtalje-kommun-vallbyvagen-10-21398433"
