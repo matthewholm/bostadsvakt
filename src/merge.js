@@ -19,8 +19,22 @@ const basT = las("data/traffar.json", []);
 const minaT = las(minaTraffarPath, []);
 const karta = new Map(basT.map((t) => [t.id, t]));
 for (const t of minaT) karta.set(t.id, { ...karta.get(t.id), ...t });
+
+// Hårda filter (samma som index.js) tillämpas även här, annars kan unionen
+// lägga tillbaka hus som ligger utanför kraven (t.ex. över maxpris).
+const cfg = las("config.json", { kriterier: {} });
+const k = cfg.kriterier || {};
+const normTyp = (s) => (s ?? "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+const tillatna = (k.objectType || "").split(",").map((t) => normTyp(t.trim())).filter(Boolean);
+const utanfor = (t) =>
+  (tillatna.length && t.typ && !tillatna.includes(normTyp(t.typ))) ||
+  (k.maxPris && t.pris && t.pris > k.maxPris) ||
+  (k.minRum && t.rum && t.rum < k.minRum) ||
+  (k.minBoarea && t.boarea && t.boarea < k.minBoarea) ||
+  (k.minTomtarea && t.tomtarea && t.tomtarea < k.minTomtarea);
+
 const traffar = [...karta.values()]
-  .filter((t) => !t.dold)
+  .filter((t) => !t.dold && !utanfor(t))
   .sort((a, b) => (b.tidpunkt ?? "").localeCompare(a.tidpunkt ?? ""))
   .slice(0, 100);
 writeFileSync("data/traffar.json", JSON.stringify(traffar, null, 2) + "\n");
