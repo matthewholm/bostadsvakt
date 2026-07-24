@@ -10,6 +10,7 @@ import { notis } from "./notify.js";
 import { lasSedda, sparaSedda } from "./state.js";
 import { lasTraffar, sparaTraffar } from "./matches.js";
 import { beraknaPoang } from "./score.js";
+import { skrivBedomning } from "./ai.js";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const k = config.kriterier;
@@ -164,6 +165,7 @@ for (const a of annonser) {
   const fakta = [typNamn, a.rum && `${a.rum} rum`, a.boarea && `${a.boarea} m²`, a.tomtarea && `tomt ${a.tomtarea} m²`]
     .filter(Boolean)
     .join(" · ");
+  const aiOmdome = await skrivBedomning({ adress: a.adress, typ: typNamn, fakta, k, pendling, omgivning, poang });
 
   // Spara ALLA hus till flödet (Bostäder), behåll ev. panel-flaggor
   traffarLagrade.set(a.id, {
@@ -178,6 +180,7 @@ for (const a of annonser) {
     rum: a.rum ?? null,
     boarea: a.boarea ?? null,
     tomtarea: a.tomtarea ?? null,
+    aiOmdome,
     url: a.url,
     bild: a.bild ?? null,
     lat: a.lat ?? null,
@@ -207,6 +210,7 @@ for (const a of annonser) {
       ...sektion("OBS", noteringar),
       "",
       poang != null ? `Matchning: ${poang}/100` : "",
+      ...(aiOmdome ? ["", aiOmdome] : []),
       uppfyller ? "✓ Uppfyller alla dina krav" : "Uppfyller inte alla krav",
       `via ${a.kalla}`,
     ].join("\n"),

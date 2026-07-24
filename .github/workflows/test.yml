@@ -27,4 +27,5 @@ jobs:
           RESROBOT_API_KEY: ${{ secrets.RESROBOT_API_KEY }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           HA_WEBHOOK_URL: ${{ secrets.HA_WEBHOOK_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: node src/index.js --test

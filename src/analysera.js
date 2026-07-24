@@ -9,6 +9,7 @@ import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
 import { lasTraffar, sparaTraffar } from "./matches.js";
 import { beraknaPoang } from "./score.js";
+import { skrivBedomning } from "./ai.js";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const k = config.kriterier;
@@ -109,21 +110,21 @@ if (!pos) {
 
 const traff = brister.length === 0;
 const poang = beraknaPoang(k, matt);
+const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
+const fakta = [typNamn, a.rum && `${a.rum} rum`].filter(Boolean).join(" · ");
+const aiOmdome = await skrivBedomning({ adress: a.adress, typ: typNamn, fakta, k, pendling, omgivning, poang });
 const sektion = (rubrik, rader) => (rader.length ? ["", rubrik, ...rader] : []);
 await notis({
   titel: traff ? `Analys: Träff · ${a.adress}` : `Analys: ${a.adress}`,
-  meddelande: (() => {
-    const fakta = [a.typ && a.typ.charAt(0).toUpperCase() + a.typ.slice(1), a.rum && `${a.rum} rum`]
-      .filter(Boolean).join(" · ");
-    return [
-      a.adress,
-      ...(fakta ? [fakta] : []),
-      ...sektion("PENDLING", pendling),
-      ...sektion("OMGIVNING", omgivning),
-      poang != null ? `\nMatchning: ${poang}/100` : "",
-      ...sektion("BEDÖMNING", traff ? ["✓ Uppfyller alla dina krav"] : brister.map((b) => `✗ ${b}`)),
-    ].filter(Boolean).join("\n");
-  })(),
+  meddelande: [
+    a.adress,
+    ...(fakta ? [fakta] : []),
+    ...sektion("PENDLING", pendling),
+    ...sektion("OMGIVNING", omgivning),
+    poang != null ? `\nMatchning: ${poang}/100` : "",
+    aiOmdome ?? "",
+    ...sektion("BEDÖMNING", traff ? ["✓ Uppfyller alla dina krav"] : brister.map((b) => `✗ ${b}`)),
+  ].filter(Boolean).join("\n"),
   lank: a.url,
   lat: pos?.lat,
   lon: pos?.lon,
@@ -132,7 +133,6 @@ await notis({
 
 // Spara i galleriet (manuellt analyserade hus hamnar också bland Bostäder)
 const lagrade = new Map(lasTraffar().map((t) => [t.id, t]));
-const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
 lagrade.set(a.id, {
   ...lagrade.get(a.id),
   id: a.id,
@@ -153,6 +153,7 @@ lagrade.set(a.id, {
   omgivning,
   uppfyller: traff,
   poang,
+  aiOmdome,
 });
 sparaTraffar([...lagrade.values()]);
 
