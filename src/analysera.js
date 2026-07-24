@@ -8,6 +8,7 @@ import { narmasteHallplatser, restidTillStockholm, harResrobotNyckel } from "./t
 import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
 import { lasTraffar, sparaTraffar } from "./matches.js";
+import { beraknaPoang } from "./score.js";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const k = config.kriterier;
@@ -43,6 +44,7 @@ console.log(`Analyserar: ${a.adress} (${a.typ || "okänd typ"}${a.rum ? `, ${a.r
 const brister = [];
 const pendling = [];
 const omgivning = [];
+const matt = {};
 
 if (a.rum && k.minRum && a.rum < k.minRum) brister.push(`${a.rum} rum (krav: minst ${k.minRum})`);
 
@@ -69,6 +71,7 @@ if (!pos) {
     const h = await narmasteHallplatser(pos.lat, pos.lon);
     if (h?.narmaste) {
       pendling.push(`Hållplats: ${h.narmaste.namn} · ${h.narmaste.avstand} m`);
+      matt.hallplatsAvstand = h.narmaste.avstand;
       if (h.narmaste.avstand > k.maxAvståndHållplatsM)
         brister.push(`hållplats ${h.narmaste.avstand} m bort (krav: ${k.maxAvståndHållplatsM} m)`);
     } else if (h) {
@@ -78,6 +81,7 @@ if (!pos) {
     const restid = await restidTillStockholm(pos.lat, pos.lon);
     if (restid != null) {
       pendling.push(`Stockholm C: ca ${fmtTid(restid)}`);
+      matt.restidMin = restid;
       if (k.maxRestidStockholmMin && restid > k.maxRestidStockholmMin)
         brister.push(`restid ${fmtTid(restid)} (krav: ${fmtTid(k.maxRestidStockholmMin)})`);
     }
@@ -90,6 +94,9 @@ if (!pos) {
         `Skog: ${n.skogM != null ? "ca " + n.skogM + " m" : "över 1,5 km"}`
     );
     omgivning.push(`Grannar inom 300 m: ${n.grannar}`);
+    matt.vattenM = n.vattenM;
+    matt.skogM = n.skogM;
+    matt.grannar = n.grannar;
     const vattenOk = n.vattenM != null && n.vattenM <= k.maxAvståndVattenM;
     const skogOk = n.skogM != null && n.skogM <= k.maxAvståndSkogM;
     const krav = k.kravNatur ?? "något";
@@ -101,6 +108,7 @@ if (!pos) {
 }
 
 const traff = brister.length === 0;
+const poang = beraknaPoang(k, matt);
 const sektion = (rubrik, rader) => (rader.length ? ["", rubrik, ...rader] : []);
 await notis({
   titel: traff ? `Analys: Träff · ${a.adress}` : `Analys: ${a.adress}`,
@@ -112,8 +120,9 @@ await notis({
       ...(fakta ? [fakta] : []),
       ...sektion("PENDLING", pendling),
       ...sektion("OMGIVNING", omgivning),
+      poang != null ? `\nMatchning: ${poang}/100` : "",
       ...sektion("BEDÖMNING", traff ? ["✓ Uppfyller alla dina krav"] : brister.map((b) => `✗ ${b}`)),
-    ].join("\n");
+    ].filter(Boolean).join("\n");
   })(),
   lank: a.url,
   lat: pos?.lat,
@@ -143,6 +152,7 @@ lagrade.set(a.id, {
   pendling,
   omgivning,
   uppfyller: traff,
+  poang,
 });
 sparaTraffar([...lagrade.values()]);
 

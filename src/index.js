@@ -9,6 +9,7 @@ import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
 import { lasSedda, sparaSedda } from "./state.js";
 import { lasTraffar, sparaTraffar } from "./matches.js";
+import { beraknaPoang } from "./score.js";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const k = config.kriterier;
@@ -109,6 +110,7 @@ for (const a of annonser) {
   const pendling = [];
   const omgivning = [];
   const noteringar = [];
+  const matt = {};
   let uppfyller = true;
 
   if (a.lat != null && a.lon != null) {
@@ -118,6 +120,7 @@ for (const a of annonser) {
       if (h.narmasteTag && h.narmasteTag.namn !== h.narmaste.namn) {
         pendling.push(`Tåg: ${h.narmasteTag.namn} · ${h.narmasteTag.avstand} m`);
       }
+      matt.hallplatsAvstand = h.narmaste.avstand;
       if (h.narmaste.avstand > k.maxAvståndHållplatsM) uppfyller = false;
     } else if (h) {
       pendling.push("Ingen hållplats inom 3 km");
@@ -127,6 +130,7 @@ for (const a of annonser) {
     const restid = await restidTillStockholm(a.lat, a.lon);
     if (restid != null) {
       pendling.push(`Stockholm C: ca ${fmtTid(restid)}`);
+      matt.restidMin = restid;
       if (k.maxRestidStockholmMin && restid > k.maxRestidStockholmMin) uppfyller = false;
     }
 
@@ -137,6 +141,9 @@ for (const a of annonser) {
           `Skog: ${n.skogM != null ? "ca " + n.skogM + " m" : "över 1,5 km"}`
       );
       omgivning.push(`Grannar inom 300 m: ${n.grannar}`);
+      matt.vattenM = n.vattenM;
+      matt.skogM = n.skogM;
+      matt.grannar = n.grannar;
       const vattenOk = n.vattenM != null && n.vattenM <= k.maxAvståndVattenM;
       const skogOk = n.skogM != null && n.skogM <= k.maxAvståndSkogM;
       // "något" = vatten eller skog räcker, "båda" = båda krävs, "inget" = inget krav
@@ -150,6 +157,7 @@ for (const a of annonser) {
     noteringar.push("Plats okänd – avstånden kunde inte kontrolleras");
     uppfyller = false;
   }
+  const poang = beraknaPoang(k, matt);
 
   const pris = a.pris ? `${a.pris.toLocaleString("sv-SE")} kr` : "";
   const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
@@ -177,6 +185,7 @@ for (const a of annonser) {
     pendling,
     omgivning,
     uppfyller,
+    poang,
   });
 
   // Notis: bara för träffar (eller för alla om så valts), aldrig på första körningen
@@ -197,6 +206,7 @@ for (const a of annonser) {
       ...sektion("OMGIVNING", omgivning),
       ...sektion("OBS", noteringar),
       "",
+      poang != null ? `Matchning: ${poang}/100` : "",
       uppfyller ? "✓ Uppfyller alla dina krav" : "Uppfyller inte alla krav",
       `via ${a.kalla}`,
     ].join("\n"),
