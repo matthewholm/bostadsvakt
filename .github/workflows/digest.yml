@@ -1,0 +1,24 @@
+name: Daglig sammanfattning
+
+# En kort "allt igång"-notis en gång om dagen. Uteblir den är det ett
+# tecken på att bevakningen slutat fungera (t.ex. utgången IMAP-nyckel).
+on:
+  schedule:
+    - cron: "0 6 * * *" # 08:00 svensk sommartid
+  workflow_dispatch: {}
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Skicka sammanfattning
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          HA_WEBHOOK_URL: ${{ secrets.HA_WEBHOOK_URL }}
+        run: node src/digest.js

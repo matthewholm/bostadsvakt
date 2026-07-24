@@ -56,3 +56,15 @@ jobs:
             sleep 3
           done
           echo "Kunde inte spara efter flera försök."; exit 1
+
+      - name: Larm om körningen misslyckades
+        if: failure()
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          if [ -n "${NTFY_TOPIC:-}" ]; then
+            curl -s -X POST https://ntfy.sh \
+              -H "Content-Type: application/json" \
+              -d "{\"topic\":\"${NTFY_TOPIC}\",\"title\":\"Bostadsvakt: körningen misslyckades\",\"message\":\"En körning gick fel. Kolla loggen: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\",\"priority\":5}" \
+              > /dev/null
+          fi
