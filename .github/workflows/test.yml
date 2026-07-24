@@ -26,4 +26,5 @@ jobs:
           IMAP_PASSWORD: ${{ secrets.IMAP_PASSWORD }}
           RESROBOT_API_KEY: ${{ secrets.RESROBOT_API_KEY }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          HA_WEBHOOK_URL: ${{ secrets.HA_WEBHOOK_URL }}
         run: node src/index.js --test
