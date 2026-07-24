@@ -13,7 +13,7 @@ export async function skrivBedomning({ adress, typ, fakta, k, pendling, omgivnin
   if (!harAnthropicNyckel()) return null;
 
   const prompt = [
-    `Hus: ${adress}${typ ? " (" + typ + ")" : ""}${fakta ? ", " + fakta : ""}.`,
+    `Hus: ${adress}${fakta ? ", " + fakta : ""}.`,
     pendling.length ? `Pendling: ${pendling.join(" · ")}.` : "",
     omgivning.length ? `Omgivning: ${omgivning.join(" · ")}.` : "",
     poang != null ? `Matchningspoäng: ${poang}/100.` : "",
