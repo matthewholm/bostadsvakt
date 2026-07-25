@@ -39,7 +39,10 @@ async function skickaHaWebhook({ titel, meddelande, lank, lat, lon, bild }) {
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      // Vissa reverse proxies/WAF:er (t.ex. Cloudflares bot-skydd) blockerar
+      // POST-anrop utan en tydlig User-Agent – ärligt identifierad, inte en
+      // förfalskad webbläsar-UA, eftersom detta är en betrodd egen tjänst.
+      headers: { "Content-Type": "application/json", "User-Agent": "Bostadsvakt-bot/1.0 (+github.com/mathiasmholm/bostadsvakt)" },
       body: JSON.stringify({
         title: titel,
         message: meddelande,
