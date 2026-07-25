@@ -11,18 +11,37 @@ export function harResrobotNyckel() {
 // Stockholm Centralstation i ResRobots nationella hållplatsregister
 const STOCKHOLM_C = "740000001";
 
-// Snabbaste resan med kollektivtrafik till Stockholm C, avresa nu. Utöver
-// restiden flaggar den (best effort) om resan går via flera trafikbolag
-// (typiskt SL + UL runt Uppsala – kan betyda separata biljetter) och om
-// någon delsträcka kräver förbeställning (vanligt för anropsstyrd trafik i
-// Norrtäljes ytterområden, se skärmdumpen som triggade det här).
+// Nästa vardagsmorgon (imorgon, eller måndag om imorgon är helg), 07:30.
+// Utan explicit datum/tid söker ResRobot "avresa nu" – för glesa
+// landsbygdslinjer (typ anropsstyrd trafik som bara kör morgon/kväll på
+// vardagar) ger det ofta ett tomt svar mitt på dagen eller på helgen, trots
+// att det finns en fullt fungerande pendlingsresa. En fast referenspunkt på
+// en vanlig arbetsdagsmorgon speglar bättre det man faktiskt vill veta:
+// hur bra är pendlingen, inte "går det en buss just i denna sekund".
+function nastaVardagsmorgon() {
+  const d = new Date();
+  do {
+    d.setDate(d.getDate() + 1);
+  } while (d.getDay() === 0 || d.getDay() === 6);
+  return { date: d.toISOString().slice(0, 10), time: "07:30" };
+}
+
+// Snabbaste resan med kollektivtrafik till Stockholm C en vanlig
+// vardagsmorgon. Utöver restiden flaggar den (best effort) om resan går via
+// flera trafikbolag (typiskt SL + UL runt Uppsala – kan betyda separata
+// biljetter) och om någon delsträcka kräver förbeställning (vanligt för
+// anropsstyrd trafik i Norrtäljes ytterområden, se skärmdumpen som
+// triggade det här).
 export async function resaTillStockholm(lat, lon) {
   if (!harResrobotNyckel()) return null;
 
+  const { date, time } = nastaVardagsmorgon();
   const params = new URLSearchParams({
     originCoordLat: String(lat),
     originCoordLong: String(lon),
     destId: STOCKHOLM_C,
+    date,
+    time,
     format: "json",
     accessId: process.env.RESROBOT_API_KEY,
   });
