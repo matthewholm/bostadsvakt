@@ -26,7 +26,7 @@ try {
     const mail = await simpleParser(content);
     const avsandare = (mail.from?.text ?? "").toLowerCase();
     if (!/hemnet|booli/.test(avsandare)) continue;
-    traffar.push({ uid, avsandare, amne: mail.subject, datum: mail.date, html: mail.html || "" });
+    traffar.push({ uid, avsandare, amne: mail.subject, datum: mail.date, html: mail.html || "", text: mail.text || "" });
   }
   traffar.sort((a, b) => new Date(b.datum) - new Date(a.datum));
 
@@ -37,9 +37,12 @@ try {
 
   const vald = process.argv[2] ? traffar.find((t) => String(t.uid) === process.argv[2]) : traffar[0];
   if (vald) {
+    console.log(`\n===== RÅ TEXT (uid=${vald.uid}, "${vald.amne}") =====\n`);
+    console.log(vald.text);
+    console.log(`\n===== SLUT TEXT =====`);
     console.log(`\n===== RÅ HTML (uid=${vald.uid}, "${vald.amne}") =====\n`);
     console.log(vald.html);
-    console.log(`\n===== SLUT =====`);
+    console.log(`\n===== SLUT HTML =====`);
   }
 } finally {
   lock.release();
