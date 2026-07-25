@@ -11,8 +11,12 @@ export function harResrobotNyckel() {
 // Stockholm Centralstation i ResRobots nationella hållplatsregister
 const STOCKHOLM_C = "740000001";
 
-// Snabbaste resan (i minuter) med kollektivtrafik till Stockholm C, avresa nu.
-export async function restidTillStockholm(lat, lon) {
+// Snabbaste resan med kollektivtrafik till Stockholm C, avresa nu. Utöver
+// restiden flaggar den (best effort) om resan går via flera trafikbolag
+// (typiskt SL + UL runt Uppsala – kan betyda separata biljetter) och om
+// någon delsträcka kräver förbeställning (vanligt för anropsstyrd trafik i
+// Norrtäljes ytterområden, se skärmdumpen som triggade det här).
+export async function resaTillStockholm(lat, lon) {
   if (!harResrobotNyckel()) return null;
 
   const params = new URLSearchParams({
@@ -29,10 +33,17 @@ export async function restidTillStockholm(lat, lon) {
     return null;
   }
   const data = await res.json();
-  const minuter = (data.Trip ?? [])
-    .map((t) => tolkaDuration(t.duration))
-    .filter((m) => m != null);
-  return minuter.length ? Math.min(...minuter) : null;
+  const tripRaw = data.Trip;
+  const resor = (Array.isArray(tripRaw) ? tripRaw : tripRaw ? [tripRaw] : [])
+    .map((trip) => ({ trip, minuter: tolkaDuration(trip.duration) }))
+    .filter((r) => r.minuter != null);
+  if (!resor.length) return null;
+
+  // Flaggorna gäller den resa vi faktiskt rapporterar tiden för (snabbast),
+  // inte något annat alternativ – annars stämmer inte varningen med resan.
+  const basta = resor.reduce((a, b) => (b.minuter < a.minuter ? b : a));
+  const { operatorer, forbestallning } = analyseraResa(basta.trip);
+  return { restidMin: basta.minuter, operatorer, forbestallning };
 }
 
 // "PT1H23M" → 83
@@ -40,6 +51,44 @@ function tolkaDuration(d) {
   const m = /^PT(?:(\d+)H)?(?:(\d+)M)?/.exec(d ?? "");
   if (!m) return null;
   return Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0);
+}
+
+const FORBESTALLNING_MONSTER = /(beställ|anropsstyr|förbeställ)/i;
+
+// ResRobots exakta svarsformat för Notes/Product per delsträcka är inte
+// dokumenterat i detalj, så vi läser flera tänkbara fältnamn defensivt och
+// faller till sist tillbaka på en råtextsökning i hela resan – hellre en
+// varning för mycket än att missa en resa som kräver förbeställning.
+function analyseraResa(trip) {
+  const legRaw = trip?.LegList?.Leg;
+  const legs = Array.isArray(legRaw) ? legRaw : legRaw ? [legRaw] : [];
+
+  const operatorer = new Set();
+  const forbestallning = new Set();
+
+  for (const leg of legs) {
+    const prodRaw = leg?.Product;
+    const produkter = Array.isArray(prodRaw) ? prodRaw : prodRaw ? [prodRaw] : [];
+    if (!produkter.length) continue; // gångsträckor saknar Product – ointressanta här
+
+    for (const p of produkter) {
+      const operator = p?.operator || p?.admin || p?.operatorCode;
+      if (operator) operatorer.add(String(operator).trim());
+    }
+
+    const noteRaw = leg?.Notes?.Note;
+    const notes = Array.isArray(noteRaw) ? noteRaw : noteRaw ? [noteRaw] : [];
+    for (const n of notes) {
+      const text = String(n?.value ?? n?.text ?? "").trim();
+      if (text && FORBESTALLNING_MONSTER.test(text)) forbestallning.add(text);
+    }
+  }
+
+  if (!forbestallning.size && FORBESTALLNING_MONSTER.test(JSON.stringify(trip ?? {}))) {
+    forbestallning.add("Resan kan kräva förbeställning – kontrollera i SL-/UL-appen.");
+  }
+
+  return { operatorer: [...operatorer], forbestallning: [...forbestallning] };
 }
 
 export async function narmasteHallplatser(lat, lon) {

@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { tolkaHemnetSlug } from "./mailsource.js";
 import { geokoda } from "./geocode.js";
-import { narmasteHallplatser, restidTillStockholm, harResrobotNyckel } from "./transit.js";
+import { narmasteHallplatser, resaTillStockholm, harResrobotNyckel } from "./transit.js";
 import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
 import { lasTraffar, sparaTraffar } from "./matches.js";
@@ -80,12 +80,18 @@ if (!pos) {
       pendling.push("Ingen hållplats inom 3 km");
       brister.push("ingen hållplats inom 3 km");
     }
-    const restid = await restidTillStockholm(pos.lat, pos.lon);
-    if (restid != null) {
-      pendling.push(`Stockholm C: ca ${fmtTid(restid)}`);
-      matt.restidMin = restid;
-      if (k.maxRestidStockholmMin && restid > k.maxRestidStockholmMin)
-        brister.push(`restid ${fmtTid(restid)} (krav: ${fmtTid(k.maxRestidStockholmMin)})`);
+    const resa = await resaTillStockholm(pos.lat, pos.lon);
+    if (resa) {
+      pendling.push(`Stockholm C: ca ${fmtTid(resa.restidMin)}`);
+      matt.restidMin = resa.restidMin;
+      if (k.maxRestidStockholmMin && resa.restidMin > k.maxRestidStockholmMin)
+        brister.push(`restid ${fmtTid(resa.restidMin)} (krav: ${fmtTid(k.maxRestidStockholmMin)})`);
+      if (resa.operatorer.length > 1) {
+        pendling.push(`⚠ Flera trafikbolag (${resa.operatorer.join(" + ")}) – kan kräva separata biljetter`);
+      }
+      for (const text of resa.forbestallning) {
+        pendling.push(`⚠ Kräver förbeställning: ${text}`);
+      }
     }
   }
 

@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { harBooliNycklar, sokAnnonser } from "./booli.js";
 import { harImap, hamtaMailAnnonser } from "./mailsource.js";
-import { narmasteHallplatser, restidTillStockholm, harResrobotNyckel } from "./transit.js";
+import { narmasteHallplatser, resaTillStockholm, harResrobotNyckel } from "./transit.js";
 import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
 import { lasSedda, sparaSedda } from "./state.js";
@@ -142,11 +142,18 @@ async function behandlaAnnons(a) {
       uppfyller = false;
     }
 
-    const restid = await restidTillStockholm(a.lat, a.lon);
-    if (restid != null) {
-      pendling.push(`Stockholm C: ca ${fmtTid(restid)}`);
-      matt.restidMin = restid;
-      if (k.maxRestidStockholmMin && restid > k.maxRestidStockholmMin) uppfyller = false;
+    const resa = await resaTillStockholm(a.lat, a.lon);
+    if (resa) {
+      pendling.push(`Stockholm C: ca ${fmtTid(resa.restidMin)}`);
+      matt.restidMin = resa.restidMin;
+      if (k.maxRestidStockholmMin && resa.restidMin > k.maxRestidStockholmMin) uppfyller = false;
+      // Informativt, inte diskvalificerande – man vill veta i förväg, inte missa huset.
+      if (resa.operatorer.length > 1) {
+        pendling.push(`⚠ Flera trafikbolag (${resa.operatorer.join(" + ")}) – kan kräva separata biljetter`);
+      }
+      for (const text of resa.forbestallning) {
+        pendling.push(`⚠ Kräver förbeställning: ${text}`);
+      }
     }
 
     const n = await naturInfo(a.lat, a.lon);
@@ -299,10 +306,10 @@ async function korTest() {
     if (h?.narmaste) {
       rader.push(`Hållplats: ${h.narmaste.namn} (${h.narmaste.avstand} m)`);
       console.log(`   ✔ Närmaste hållplats: ${h.narmaste.namn}, ${h.narmaste.avstand} m`);
-      const restid = await restidTillStockholm(hus.lat, hus.lon);
-      if (restid != null) {
-        rader.push(`Till Stockholm C: ca ${fmtTid(restid)}`);
-        console.log(`   ✔ Restid till Stockholm C: ca ${fmtTid(restid)}`);
+      const resa = await resaTillStockholm(hus.lat, hus.lon);
+      if (resa) {
+        rader.push(`Till Stockholm C: ca ${fmtTid(resa.restidMin)}`);
+        console.log(`   ✔ Restid till Stockholm C: ca ${fmtTid(resa.restidMin)}`);
       }
     } else {
       console.log("   ✘ Fick inget svar från ResRobot – kontrollera nyckeln.");
