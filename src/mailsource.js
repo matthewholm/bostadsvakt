@@ -45,15 +45,17 @@ export async function hamtaMailAnnonser(areas = []) {
         // Hemnets dagliga sammanfattningsmejl ("Nytt i dina bevakningar")
         // innehåller efter de riktiga sökträffarna även en "Upptäck fler
         // bostäder"-sektion med Hemnets EGNA rekommendationer ("Hemnet Max")
-        // – inte träffar på den sparade sökningen. Klipps bort helt innan
-        // något annat parsas, annars blandas Hemnets gissningar in som om
-        // de vore riktiga bevakningsträffar.
-        const html = klippBortRekommendationer(mail.html || "");
-        const text = klippBortRekommendationer(mail.text || "");
-        const digest = new Map(tolkaHemnetDigest(text).map((a) => [a.id, a]));
-        for (const a of hittaAnnonser(html, text)) {
-          const d = digest.get(a.id);
-          annonser.set(a.id, d ? { ...a, ...d, bild: a.bild ?? d.bild } : a);
+        // – inte träffar på den sparade sökningen. Delas i två delar så de
+        // kan hållas isär och taggas separat, istället för att blandas in
+        // som om de vore riktiga bevakningsträffar.
+        const { fore: html, efter: rekHtml } = delaVidRekommendationer(mail.html || "");
+        const { fore: text, efter: rekText } = delaVidRekommendationer(mail.text || "");
+
+        for (const a of berikaMedDigest(html, text)) annonser.set(a.id, a);
+        if (rekText) {
+          for (const a of berikaMedDigest(rekHtml, rekText)) {
+            annonser.set(a.id, { ...a, kalla: "Hemnet Max" });
+          }
         }
       }
       await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
@@ -261,13 +263,23 @@ function avslojaHemnetSparlank(href) {
   }
 }
 
-// Klipper bort Hemnets "Upptäck fler bostäder"-sektion (Hemnet Max-
-// rekommendationer) om den finns, i både HTML och text – den innehåller
-// riktiga husannonser men de är INTE träffar på den sparade sökningen,
-// bara Hemnets egna gissningar om vad man kan tänkas gilla.
-export function klippBortRekommendationer(s) {
+// Delar Hemnets sammanfattningsmejl vid "Upptäck fler bostäder" – allt
+// före är riktiga sökträffar, allt efter är Hemnets EGNA rekommendationer
+// ("Hemnet Max"). Finns ingen sådan sektion hamnar allt i "fore".
+export function delaVidRekommendationer(s) {
   const ix = s.search(/Upptäck fler bostäder/i);
-  return ix >= 0 ? s.slice(0, ix) : s;
+  return ix >= 0 ? { fore: s.slice(0, ix), efter: s.slice(ix) } : { fore: s, efter: "" };
+}
+
+// Kör den vanliga annons-extraktionen och berikar med adress/ort/yta/rum/
+// pris från digest-parsern (om mejlet var av den typen) – delad logik för
+// både huvudsektionen och (om separerad) rekommendationssektionen.
+function berikaMedDigest(html, text) {
+  const digest = new Map(tolkaHemnetDigest(text).map((a) => [a.id, a]));
+  return hittaAnnonser(html, text).map((a) => {
+    const d = digest.get(a.id);
+    return d ? { ...a, ...d, bild: a.bild ?? d.bild } : a;
+  });
 }
 
 // Tolkar husblocken i Hemnets sammanfattningsmejl ur textversionen (renare
@@ -284,7 +296,14 @@ export function klippBortRekommendationer(s) {
 // Ankrar på "NNN m²"-raden (mest entydig) och läser adress/ort två rader
 // bakåt, rum/pris/länk några rader framåt.
 export function tolkaHemnetDigest(text) {
-  const rader = text.split("\n").map((s) => s.trim()).filter(Boolean);
+  // Hemnets mejl innehåller osynliga nollbreddstecken (radbrytningshintar)
+  // och hårda mellanslag (t.ex. "Norrmarken 7" mellan gatunamn och
+  // nummer) – normaliseras bort, annars kan de smyga med i adressen och
+  // tysta förstöra geokodningen senare.
+  const rader = text
+    .split("\n")
+    .map((s) => s.replace(/[​-‍﻿]/g, "").replace(/ /g, " ").trim())
+    .filter(Boolean);
   const resultat = [];
 
   for (let i = 2; i < rader.length; i++) {

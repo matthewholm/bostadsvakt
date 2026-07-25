@@ -243,9 +243,13 @@ async function behandlaAnnons(a) {
     poang,
   });
 
-  // Notis: bara för träffar (eller för alla om så valts), aldrig på första körningen
-  if (forstaKorning || (config.notiser.endastTräffar && !uppfyller)) {
-    console.log(`  ${uppfyller ? "Träff" : "Ny"} sparad utan notis [${a.id}]: ${a.adress}`);
+  // Notis: bara för träffar (eller för alla om så valts), aldrig på första
+  // körningen eller för Hemnets egna rekommendationer ("Hemnet Max") – de
+  // är inte nya sökträffar, bara tips, och ska synas i galleriet utan att
+  // trigga en push varje gång Hemnet råkar nämna dem igen.
+  if (forstaKorning || a.kalla === "Hemnet Max" || (config.notiser.endastTräffar && !uppfyller)) {
+    const etikett = a.kalla === "Hemnet Max" ? "Tips" : uppfyller ? "Träff" : "Ny";
+    console.log(`  ${etikett} sparad utan notis [${a.id}]: ${a.adress}`);
     return;
   }
 
