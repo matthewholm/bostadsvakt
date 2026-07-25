@@ -1,0 +1,30 @@
+name: Diagnos mejl
+
+# Engångsverktyg: dumpar rå HTML för senaste Hemnet-/Booli-mejlen så
+# parsern kan byggas mot verklig struktur. Tas bort efter felsökningen.
+on:
+  workflow_dispatch:
+    inputs:
+      uid:
+        description: "UID att dumpa (tomt = senaste)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  diagnos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Kör diagnos
+        env:
+          IMAP_HOST: ${{ secrets.IMAP_HOST }}
+          IMAP_USER: ${{ secrets.IMAP_USER }}
+          IMAP_PASSWORD: ${{ secrets.IMAP_PASSWORD }}
+          DIAGNOS_UID: ${{ inputs.uid }}
+        run: node src/diagnos-mail.mjs "$DIAGNOS_UID"
