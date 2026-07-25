@@ -42,7 +42,19 @@ export async function hamtaMailAnnonser(areas = []) {
       if (/slutpris/i.test(mail.subject ?? "")) {
         slutpriser.push(...tolkaSlutpriserMail(mail.html || ""));
       } else {
-        for (const a of hittaAnnonser(mail.html || "", mail.text || "")) annonser.set(a.id, a);
+        // Hemnets dagliga sammanfattningsmejl ("Nytt i dina bevakningar")
+        // innehåller efter de riktiga sökträffarna även en "Upptäck fler
+        // bostäder"-sektion med Hemnets EGNA rekommendationer ("Hemnet Max")
+        // – inte träffar på den sparade sökningen. Klipps bort helt innan
+        // något annat parsas, annars blandas Hemnets gissningar in som om
+        // de vore riktiga bevakningsträffar.
+        const html = klippBortRekommendationer(mail.html || "");
+        const text = klippBortRekommendationer(mail.text || "");
+        const digest = new Map(tolkaHemnetDigest(text).map((a) => [a.id, a]));
+        for (const a of hittaAnnonser(html, text)) {
+          const d = digest.get(a.id);
+          annonser.set(a.id, d ? { ...a, ...d, bild: a.bild ?? d.bild } : a);
+        }
       }
       await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
     }
@@ -106,7 +118,7 @@ export function hittaAnnonser(html, plaintext = "") {
 
   // 1) Gå igenom alla <a>-taggar och para id ↔ adresstext ↔ bild
   for (const m of text.matchAll(/<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi)) {
-    const href = flerAvkoda(m[1]);
+    const href = flerAvkoda(m[1]) + "\n" + (avslojaHemnetSparlank(m[1]) ?? "");
     const inner = m[2];
     const img = inner.match(/<img\b[^>]*src="(https?:\/\/[^"]+?)"/i)?.[1];
     const rentText = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -231,6 +243,87 @@ export function tolkaHemnetSlug(slug) {
     bild: null,
     pris: null, boarea: null, tomtarea: null, lat: null, lon: null,
   };
+}
+
+// Hemnets sammanfattningsmejl länkar via en click-tracking-wrapper
+// (ciomail.hemnet.se/e/c/<base64>/<hash>) vars riktiga mål ligger
+// base64-kodat som JSON i path:en – inte procent-kodat, så flerAvkoda
+// hittar det inte. Utan avkodning tappas både id och (eftersom bilden
+// ligger i SAMMA <a>-tagg) bilden för de här mejlen.
+function avslojaHemnetSparlank(href) {
+  const m = href.match(/ciomail\.hemnet\.se\/e\/c\/([A-Za-z0-9+/=_-]+?)\//);
+  if (!m) return null;
+  try {
+    const json = JSON.parse(Buffer.from(m[1], "base64").toString("utf8"));
+    return typeof json.href === "string" ? json.href : null;
+  } catch {
+    return null;
+  }
+}
+
+// Klipper bort Hemnets "Upptäck fler bostäder"-sektion (Hemnet Max-
+// rekommendationer) om den finns, i både HTML och text – den innehåller
+// riktiga husannonser men de är INTE träffar på den sparade sökningen,
+// bara Hemnets egna gissningar om vad man kan tänkas gilla.
+export function klippBortRekommendationer(s) {
+  const ix = s.search(/Upptäck fler bostäder/i);
+  return ix >= 0 ? s.slice(0, ix) : s;
+}
+
+// Tolkar husblocken i Hemnets sammanfattningsmejl ur textversionen (renare
+// än HTML:en – klarar sig utan taggstripping). Varje block ser ut som:
+//   Fasternavägen
+//   Rimbo, Norrtälje kommun
+//   128 m²
+//   ·
+//   5 rum
+//   ·
+//   3 495 000 kr
+//   [ev. märke: Underhand/Budgivning pågår/datum]
+//   Visa bostaden ( https://www.hemnet.se/bostad/-21758739?... )
+// Ankrar på "NNN m²"-raden (mest entydig) och läser adress/ort två rader
+// bakåt, rum/pris/länk några rader framåt.
+export function tolkaHemnetDigest(text) {
+  const rader = text.split("\n").map((s) => s.trim()).filter(Boolean);
+  const resultat = [];
+
+  for (let i = 2; i < rader.length; i++) {
+    const areaM = rader[i].match(/^(\d[\d\s]*)\s*m²$/);
+    if (!areaM) continue;
+    const ort = rader[i - 1];
+    const adress = rader[i - 2];
+    if (!ort || !adress || !ort.includes(",") || adress.length > 60) continue;
+
+    let rum = null, pris = null, id = null;
+    for (let j = i + 1; j < Math.min(i + 10, rader.length); j++) {
+      const rm = rader[j].match(/^(\d+)\s*rum$/i);
+      if (rm && rum === null) rum = Number(rm[1]);
+      const p = rader[j].match(/^([\d][\d\s]*)\s*kr$/);
+      if (p && pris === null) pris = Number(p[1].replace(/\s/g, ""));
+      const l = rader[j].match(/hemnet\.se\/bostad\/(-?\d+)/i);
+      if (l && id === null) id = `hemnet-${l[1].replace(/^-/, "")}`;
+      if (id !== null && (rum !== null || pris !== null)) break;
+    }
+    if (!id) continue;
+
+    resultat.push({
+      id,
+      kalla: "Hemnet",
+      url: `https://www.hemnet.se/bostad/${id.replace("hemnet-", "-")}`,
+      typ: "",
+      rum,
+      adress,
+      ort: ort.split(",")[0].trim(),
+      adressFragor: [...new Set([`${adress} ${ort}`, adress])],
+      bild: null,
+      pris,
+      boarea: Number(areaM[1].replace(/\s/g, "")),
+      tomtarea: null,
+      lat: null,
+      lon: null,
+    });
+  }
+  return resultat;
 }
 
 // Avkodar procent-kodning upp till tre varv (spårningslänkar dubbel-kodar).
