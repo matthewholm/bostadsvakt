@@ -55,7 +55,10 @@ export async function skrivBedomning({ adress, typ, fakta, pris, k, pendling, om
           "utifrån pendling, natur, avskildhet och – när det finns data om det – om priset är bra jämfört med " +
           "nyligen sålda hus i området. Skriv EXAKT 2-3 meningar på svenska: vad som är bra, vad som är den " +
           "svaga länken (om någon), och en ärlig helhetsbild. Nämn prisläget bara om prisdata finns i " +
-          "meddelandet. Var konkret och kortfattad – ingen hälsning, ingen rubrik, inga punktlistor.",
+          "meddelandet. Var konkret och kortfattad – ingen hälsning, ingen rubrik, inga punktlistor. Du får " +
+          "aldrig ställa följdfrågor eller be om mer information – meddelandet är allt du får, det finns ingen " +
+          "mottagare som kan svara dig. Räcker informationen inte för en bedömning, säg det i en kort mening " +
+          "istället för att bedöma.",
         messages: [{ role: "user", content: prompt }],
       }),
     });

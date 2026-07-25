@@ -203,9 +203,15 @@ async function behandlaAnnons(a) {
   const fakta = [typNamn, a.rum && `${a.rum} rum`, a.boarea && `${a.boarea} m²`, a.tomtarea && `tomt ${a.tomtarea} m²`]
     .filter(Boolean)
     .join(" · ");
-  const aiOmdome = await skrivBedomning({
-    adress: a.adress, typ: typNamn, fakta, pris: a.pris, k, pendling, omgivning, poang, prisJmforelse,
-  });
+  // Utan koordinater finns inget att bedöma – AI:n har då bara en
+  // adress-platshållare och tomma pendling/omgivning-listor att gå på, och
+  // svarar istället med ett förvirrat "jag saknar underlag, kan du skicka
+  // mer info?" som ser trasigt ut i panelen. Hoppa hellre över bedömningen.
+  const aiOmdome = a.lat != null
+    ? await skrivBedomning({
+        adress: a.adress, typ: typNamn, fakta, pris: a.pris, k, pendling, omgivning, poang, prisJmforelse,
+      })
+    : null;
 
   // Spara ALLA hus till flödet (Bostäder), behåll ev. panel-flaggor.
   // typ sparas tomt (inte "Bostad"-platshållaren) när hustypen är okänd –
