@@ -43,12 +43,13 @@ jobs:
         run: |
           cp data/traffar.json /tmp/mina-traffar.json
           cp data/seen.json /tmp/mina-seen.json
+          cp data/slutpriser.json /tmp/mina-slutpriser.json
           git config user.name "bostadsvakt-bot"
           git config user.email "actions@users.noreply.github.com"
           for i in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            node src/merge.js /tmp/mina-traffar.json /tmp/mina-seen.json
+            node src/merge.js /tmp/mina-traffar.json /tmp/mina-seen.json /tmp/mina-slutpriser.json
             git add data/
             if git diff --cached --quiet; then echo "Inget nytt att spara."; exit 0; fi
             git commit -m "Uppdatera sedda annonser och träffar"

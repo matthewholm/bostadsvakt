@@ -9,7 +9,7 @@ export function harAnthropicNyckel() {
   return Boolean(process.env.ANTHROPIC_API_KEY);
 }
 
-export async function skrivBedomning({ adress, typ, fakta, pris, k, pendling, omgivning, poang }) {
+export async function skrivBedomning({ adress, typ, fakta, pris, k, pendling, omgivning, poang, prisJmforelse }) {
   if (!harAnthropicNyckel()) return null;
 
   const budgetKrav = [
@@ -19,10 +19,18 @@ export async function skrivBedomning({ adress, typ, fakta, pris, k, pendling, om
     k.minTomtarea ? `minst ${k.minTomtarea} m² tomt` : "",
   ].filter(Boolean).join(", ");
 
+  const prisrad = prisJmforelse
+    ? `Prisläge: ${prisJmforelse.husKvm.toLocaleString("sv-SE")} kr/m², vilket är ` +
+      `${Math.abs(prisJmforelse.diffProcent)}% ${prisJmforelse.diffProcent <= 0 ? "under" : "över"} ` +
+      `snittpriset (${prisJmforelse.snittKvm.toLocaleString("sv-SE")} kr/m²) för nyligen sålda ` +
+      `jämförbara hus i området (baserat på ${prisJmforelse.antalJamforelser} sålda hus).`
+    : "";
+
   const prompt = [
     `Hus: ${adress}${fakta ? ", " + fakta : ""}${pris ? `, pris ${pris.toLocaleString("sv-SE")} kr` : ""}.`,
     pendling.length ? `Pendling: ${pendling.join(" · ")}.` : "",
     omgivning.length ? `Omgivning: ${omgivning.join(" · ")}.` : "",
+    prisrad,
     poang != null ? `Matchningspoäng: ${poang}/100.` : "",
     `Krav att bedöma mot: max hållplatsavstånd ${k.maxAvståndHållplatsM} m, ` +
       `max vattenavstånd ${k.maxAvståndVattenM} m, max skogsavstånd ${k.maxAvståndSkogM} m, ` +
@@ -44,9 +52,10 @@ export async function skrivBedomning({ adress, typ, fakta, pris, k, pendling, om
         max_tokens: 200,
         system:
           "Du är en kunnig lokalkännare som bedömer villor åt ett par som letar hus nära Uppsala/Norrtälje " +
-          "utifrån pendling, natur och avskildhet. Skriv EXAKT 2-3 meningar på svenska: vad som är bra, vad " +
-          "som är den svaga länken (om någon), och en ärlig helhetsbild. Var konkret och kortfattad – ingen " +
-          "hälsning, ingen rubrik, inga punktlistor.",
+          "utifrån pendling, natur, avskildhet och – när det finns data om det – om priset är bra jämfört med " +
+          "nyligen sålda hus i området. Skriv EXAKT 2-3 meningar på svenska: vad som är bra, vad som är den " +
+          "svaga länken (om någon), och en ärlig helhetsbild. Nämn prisläget bara om prisdata finns i " +
+          "meddelandet. Var konkret och kortfattad – ingen hälsning, ingen rubrik, inga punktlistor.",
         messages: [{ role: "user", content: prompt }],
       }),
     });

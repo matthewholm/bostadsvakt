@@ -1,11 +1,11 @@
 // Slår ihop den här körningens data (sparad undan före en hård reset) med
 // den senaste versionen från origin. Körs i workflowens spara-loop så att
 // samtidiga körningar aldrig krockar. Anropas som:
-//   node src/merge.js <mina-traffar.json> [<mina-seen.json>]
-// och skriver de sammanslagna data/traffar.json (+ data/seen.json om angiven).
+//   node src/merge.js <mina-traffar.json> [<mina-seen.json>] [<mina-slutpriser.json>]
+// och skriver de sammanslagna data/traffar.json (+ seen.json/slutpriser.json om angivna).
 import { readFileSync, writeFileSync } from "node:fs";
 
-const [, , minaTraffarPath, minaSeddaPath] = process.argv;
+const [, , minaTraffarPath, minaSeddaPath, minaSlutpriserPath] = process.argv;
 const las = (p, fallback) => {
   try {
     return JSON.parse(readFileSync(p, "utf8"));
@@ -45,4 +45,19 @@ if (minaSeddaPath) {
   const mina = las(minaSeddaPath, []);
   const alla = [...new Set([...bas, ...mina])].sort();
   writeFileSync("data/seen.json", JSON.stringify(alla, null, 2) + "\n");
+}
+
+// Slutpriser: slå ihop, kasta det som blivit för gammalt, begränsa storleken
+// (samma regler som src/slutpriser.js – hålls i synk manuellt).
+if (minaSlutpriserPath) {
+  const MAX_POSTER = 400;
+  const MAX_ALDER_DAGAR = 270;
+  const bas = las("data/slutpriser.json", []);
+  const mina = las(minaSlutpriserPath, []);
+  const grans = Date.now() - MAX_ALDER_DAGAR * 86400000;
+  const alla = [...bas, ...mina]
+    .filter((p) => new Date(p.datum).getTime() >= grans)
+    .sort((a, b) => (b.datum ?? "").localeCompare(a.datum ?? ""))
+    .slice(0, MAX_POSTER);
+  writeFileSync("data/slutpriser.json", JSON.stringify(alla, null, 2) + "\n");
 }

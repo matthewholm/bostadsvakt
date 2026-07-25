@@ -10,6 +10,7 @@ import { notis } from "./notify.js";
 import { lasTraffar, sparaTraffar } from "./matches.js";
 import { beraknaPoang } from "./score.js";
 import { skrivBedomning } from "./ai.js";
+import { lasSlutpriser, jamforPris } from "./slutpriser.js";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const k = config.kriterier;
@@ -112,7 +113,10 @@ const traff = brister.length === 0;
 const poang = beraknaPoang(k, matt);
 const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
 const fakta = [typNamn, a.rum && `${a.rum} rum`].filter(Boolean).join(" · ");
-const aiOmdome = await skrivBedomning({ adress: a.adress, typ: typNamn, fakta, pris: a.pris, k, pendling, omgivning, poang });
+const prisJmforelse = jamforPris({ pris: a.pris, boarea: a.boarea, ort: a.ort, typ: a.typ }, lasSlutpriser());
+const aiOmdome = await skrivBedomning({
+  adress: a.adress, typ: typNamn, fakta, pris: a.pris, k, pendling, omgivning, poang, prisJmforelse,
+});
 const sektion = (rubrik, rader) => (rader.length ? ["", rubrik, ...rader] : []);
 await notis({
   titel: traff ? `Analys: Träff · ${a.adress}` : `Analys: ${a.adress}`,
@@ -145,6 +149,7 @@ lagrade.set(a.id, {
   rum: a.rum ?? null,
   boarea: a.boarea ?? null,
   tomtarea: a.tomtarea ?? null,
+  prisJmforelse,
   url: a.url,
   bild: a.bild ?? null,
   lat: pos?.lat ?? null,

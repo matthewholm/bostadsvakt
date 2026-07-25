@@ -11,6 +11,7 @@ import { lasSedda, sparaSedda } from "./state.js";
 import { lasTraffar, sparaTraffar } from "./matches.js";
 import { beraknaPoang } from "./score.js";
 import { skrivBedomning } from "./ai.js";
+import { lasSlutpriser, sparaSlutpriser, jamforPris } from "./slutpriser.js";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const k = config.kriterier;
@@ -65,9 +66,10 @@ if (harBooliNycklar()) {
 if (harImap()) {
   console.log("\nLäser bevakningsmejl (Hemnet/Booli)...");
   try {
-    const lista = await hamtaMailAnnonser(config.searches.map((s) => s.namn));
-    console.log(`  ${lista.length} annonser i mejlen.`);
+    const { annonser: lista, slutpriser: nyaSlutpriser } = await hamtaMailAnnonser(config.searches.map((s) => s.namn));
+    console.log(`  ${lista.length} annonser i mejlen, ${nyaSlutpriser.length} nya slutpriser.`);
     annonser.push(...lista);
+    if (nyaSlutpriser.length) sparaSlutpriser([...lasSlutpriser(), ...nyaSlutpriser]);
   } catch (err) {
     console.error(`  Kunde inte läsa inkorgen: ${err.message}`);
   }
@@ -75,6 +77,7 @@ if (harImap()) {
 
 // ---- Bedöm och notifiera ----
 const tillatnaTyper = k.objectType.split(",").map(normTyp);
+const slutprisData = lasSlutpriser(); // läses en gång, inkl. ev. nya poster ovan
 
 for (const a of annonser) {
   if (sedda.has(a.id)) continue;
@@ -85,27 +88,38 @@ for (const a of annonser) {
   // notiser – mejlkällan innehåller däremot bara nyheter och notifierar alltid.
   if (forstaKorning && a.bulk) continue;
 
+  try {
+    await behandlaAnnons(a);
+  } catch (err) {
+    // Huset är redan markerat "sett" (annars skulle det bevakas om och om
+    // igen), men ett fel här ska aldrig få hela körningen att krascha och
+    // tysta resten av annonserna – logga och gå vidare.
+    console.error(`  Fel vid bearbetning av ${a.id} (${a.adress || "adress saknas"}): ${err.message}`);
+  }
+}
+
+async function behandlaAnnons(a) {
   // Hårda filter: hustyp, pris, rum och yta. Hus utanför dessa visas inte
   // alls (bara uteslutna om värdet är känt). Läge/natur avgör Träff nedan.
   if (a.typ && !tillatnaTyper.includes(normTyp(a.typ))) {
-    console.log(`  Utanför filter (hustyp ${a.typ}): ${a.adress}`);
-    continue;
+    console.log(`  Utanför filter (hustyp ${a.typ}) [${a.id}]: ${a.adress}`);
+    return;
   }
   if (k.maxPris && a.pris && a.pris > k.maxPris) {
-    console.log(`  Utanför filter (pris ${a.pris} > ${k.maxPris}): ${a.adress}`);
-    continue;
+    console.log(`  Utanför filter (pris ${a.pris} > ${k.maxPris}) [${a.id}]: ${a.adress}`);
+    return;
   }
   if (k.minRum && a.rum && a.rum < k.minRum) {
-    console.log(`  Utanför filter (rum ${a.rum} < ${k.minRum}): ${a.adress}`);
-    continue;
+    console.log(`  Utanför filter (rum ${a.rum} < ${k.minRum}) [${a.id}]: ${a.adress}`);
+    return;
   }
   if (k.minBoarea && a.boarea && a.boarea < k.minBoarea) {
-    console.log(`  Utanför filter (boarea ${a.boarea} < ${k.minBoarea}): ${a.adress}`);
-    continue;
+    console.log(`  Utanför filter (boarea ${a.boarea} < ${k.minBoarea}) [${a.id}]: ${a.adress}`);
+    return;
   }
   if (k.minTomtarea && a.tomtarea && a.tomtarea < k.minTomtarea) {
-    console.log(`  Utanför filter (tomt ${a.tomtarea} < ${k.minTomtarea}): ${a.adress}`);
-    continue;
+    console.log(`  Utanför filter (tomt ${a.tomtarea} < ${k.minTomtarea}) [${a.id}]: ${a.adress}`);
+    return;
   }
 
   const pendling = [];
@@ -160,12 +174,31 @@ for (const a of annonser) {
   }
   const poang = beraknaPoang(k, matt);
 
+  // Prisjämförelse: hur ligger huset till mot nyligen sålda hus i samma
+  // område (kr/m²)? Kräver att slutpriser-bevakningen samlat in tillräckligt
+  // med jämförelsepunkter – annars null och notisen visar bara priset som förr.
+  const prisJmforelse = jamforPris(
+    { pris: a.pris, boarea: a.boarea, ort: a.omrade || a.ort, typ: a.typ },
+    slutprisData
+  );
+  const prisRader = prisJmforelse
+    ? [
+        `${prisJmforelse.husKvm.toLocaleString("sv-SE")} kr/m² · områdessnitt ${prisJmforelse.snittKvm.toLocaleString("sv-SE")} kr/m² ` +
+          `(${prisJmforelse.antalJamforelser} sålda jämförelser)`,
+        prisJmforelse.diffProcent <= 0
+          ? `${Math.abs(prisJmforelse.diffProcent)}% under snittpriset i området`
+          : `${prisJmforelse.diffProcent}% över snittpriset i området`,
+      ]
+    : [];
+
   const pris = a.pris ? `${a.pris.toLocaleString("sv-SE")} kr` : "";
   const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
   const fakta = [typNamn, a.rum && `${a.rum} rum`, a.boarea && `${a.boarea} m²`, a.tomtarea && `tomt ${a.tomtarea} m²`]
     .filter(Boolean)
     .join(" · ");
-  const aiOmdome = await skrivBedomning({ adress: a.adress, typ: typNamn, fakta, pris: a.pris, k, pendling, omgivning, poang });
+  const aiOmdome = await skrivBedomning({
+    adress: a.adress, typ: typNamn, fakta, pris: a.pris, k, pendling, omgivning, poang, prisJmforelse,
+  });
 
   // Spara ALLA hus till flödet (Bostäder), behåll ev. panel-flaggor
   traffarLagrade.set(a.id, {
@@ -180,6 +213,7 @@ for (const a of annonser) {
     rum: a.rum ?? null,
     boarea: a.boarea ?? null,
     tomtarea: a.tomtarea ?? null,
+    prisJmforelse,
     aiOmdome,
     url: a.url,
     bild: a.bild ?? null,
@@ -193,8 +227,8 @@ for (const a of annonser) {
 
   // Notis: bara för träffar (eller för alla om så valts), aldrig på första körningen
   if (forstaKorning || (config.notiser.endastTräffar && !uppfyller)) {
-    console.log(`  ${uppfyller ? "Träff" : "Ny"} sparad utan notis: ${a.adress}`);
-    continue;
+    console.log(`  ${uppfyller ? "Träff" : "Ny"} sparad utan notis [${a.id}]: ${a.adress}`);
+    return;
   }
 
   traffar++;
@@ -205,6 +239,7 @@ for (const a of annonser) {
     meddelande: [
       a.adress,
       fakta,
+      ...sektion("PRIS", prisRader),
       ...sektion("PENDLING", pendling),
       ...sektion("OMGIVNING", omgivning),
       ...sektion("OBS", noteringar),
@@ -225,6 +260,7 @@ for (const a of annonser) {
 
 // Städa flödet: ta bort tidigare sparade hus som numera ligger utanför de
 // hårda filtren (t.ex. om maxpris sänkts) så listan alltid speglar kraven.
+const antalForeStad = traffarLagrade.size;
 for (const [id, t] of traffarLagrade) {
   const utanfor =
     (t.typ && !tillatnaTyper.includes(normTyp(t.typ))) ||
@@ -232,11 +268,18 @@ for (const [id, t] of traffarLagrade) {
     (k.minRum && t.rum && t.rum < k.minRum) ||
     (k.minBoarea && t.boarea && t.boarea < k.minBoarea) ||
     (k.minTomtarea && t.tomtarea && t.tomtarea < k.minTomtarea);
-  if (utanfor) traffarLagrade.delete(id);
+  if (utanfor) {
+    console.log(`  Städat bort ur flödet (utanför krav) [${id}]: ${t.adress}`);
+    traffarLagrade.delete(id);
+  }
+}
+if (traffarLagrade.size !== antalForeStad) {
+  console.log(`  Flödet städat: ${antalForeStad} → ${traffarLagrade.size} hus.`);
 }
 
 sparaSedda(sedda);
 sparaTraffar([...traffarLagrade.values()]);
+console.log(`  Sparade ${traffarLagrade.size} hus till data/traffar.json.`);
 
 if (forstaKorning) {
   console.log(`\nFörsta körningen: ${nya} befintliga annonser sparade som "sedda". Från och med nästa körning får du notiser om allt nytt.`);
@@ -281,7 +324,7 @@ async function korTest() {
   console.log("3. Mejlkälla (IMAP)...");
   if (harImap()) {
     try {
-      const lista = await hamtaMailAnnonser(config.searches.map((s) => s.namn));
+      const { annonser: lista } = await hamtaMailAnnonser(config.searches.map((s) => s.namn));
       console.log(`   ✔ Inkorgen nådd – ${lista.length} annonser i olästa bevakningsmejl.`);
     } catch (err) {
       console.log(`   ✘ Kunde inte läsa inkorgen: ${err.message}`);

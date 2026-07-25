@@ -14,6 +14,7 @@ export function harImap() {
 export async function hamtaMailAnnonser(areas = []) {
   const { ImapFlow } = await import("imapflow");
   const { simpleParser } = await import("mailparser");
+  const { tolkaSlutpriserMail } = await import("./slutpriser.js");
 
   const client = new ImapFlow({
     host: process.env.IMAP_HOST || "imap.gmail.com",
@@ -24,6 +25,7 @@ export async function hamtaMailAnnonser(areas = []) {
   });
 
   const annonser = new Map();
+  const slutpriser = [];
   await client.connect();
   const lock = await client.getMailboxLock("INBOX");
   try {
@@ -35,7 +37,13 @@ export async function hamtaMailAnnonser(areas = []) {
       const avsandare = (mail.from?.text ?? "").toLowerCase();
       if (!/hemnet|booli/.test(avsandare)) continue;
 
-      for (const a of hittaAnnonser(mail.html || "", mail.text || "")) annonser.set(a.id, a);
+      // Slutpriser-bevakning: sålda hus används bara för prisstatistik,
+      // skapar aldrig egna annonser/notiser.
+      if (/slutpris/i.test(mail.subject ?? "")) {
+        slutpriser.push(...tolkaSlutpriserMail(mail.html || ""));
+      } else {
+        for (const a of hittaAnnonser(mail.html || "", mail.text || "")) annonser.set(a.id, a);
+      }
       await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
     }
   } finally {
@@ -57,7 +65,7 @@ export async function hamtaMailAnnonser(areas = []) {
       }
     }
   }
-  return [...annonser.values()];
+  return { annonser: [...annonser.values()], slutpriser };
 }
 
 // Geokodningsfrågor per annons. Hemnet bär adressen i sin slug; Booli ger
@@ -199,7 +207,11 @@ export function tolkaHemnetSlug(slug) {
   const kommunNamn = plats.at(-1) ?? "";
 
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-  const adress = [cap(gata.join(" ")), plats.map(cap).join(" ")].filter(Boolean).join(", ");
+  // Vissa Hemnet-länkar (t.ex. digestmejl) saknar helt adressord i sluggen –
+  // då blir både gata och plats tomma. Utan fallback här försvinner huset
+  // spårlöst: det markeras ändå som "sett" men får ingen visningsbar adress.
+  const adress = [cap(gata.join(" ")), plats.map(cap).join(" ")].filter(Boolean).join(", ")
+    || `${cap(typ) || "Bostad"} (adress saknas, hemnet-${id})`;
 
   const adressFragor = [...new Set([
     [...gata, ...plats].join(" "),
