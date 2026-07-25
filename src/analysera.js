@@ -155,6 +155,7 @@ lagrade.set(a.id, {
   rum: a.rum ?? null,
   boarea: a.boarea ?? null,
   tomtarea: a.tomtarea ?? null,
+  restidMin: matt.restidMin ?? null,
   prisJmforelse,
   url: a.url,
   bild: a.bild ?? null,

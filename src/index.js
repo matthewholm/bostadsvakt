@@ -144,9 +144,17 @@ async function behandlaAnnons(a) {
 
     const resa = await resaTillStockholm(a.lat, a.lon);
     if (resa) {
+      // Hårt filter precis som pris/rum/yta: en resa på över maxRestid är
+      // inte "en svag länk" man ändå vill se, det är en dealbreaker – huset
+      // ska inte synas i flödet alls. Vet vi inte restiden (resa === null,
+      // t.ex. ResRobot saknar ruttdata för platsen) utesluts inget, för att
+      // inte gömma hus där vi bara råkar sakna data.
+      if (k.maxRestidStockholmMin && resa.restidMin > k.maxRestidStockholmMin) {
+        console.log(`  Utanför filter (restid ${resa.restidMin} min > ${k.maxRestidStockholmMin} min) [${a.id}]: ${a.adress}`);
+        return;
+      }
       pendling.push(`Stockholm C: ca ${fmtTid(resa.restidMin)}`);
       matt.restidMin = resa.restidMin;
-      if (k.maxRestidStockholmMin && resa.restidMin > k.maxRestidStockholmMin) uppfyller = false;
       // Informativt, inte diskvalificerande – man vill veta i förväg, inte missa huset.
       if (resa.operatorer.length > 1) {
         pendling.push(`⚠ Flera trafikbolag (${resa.operatorer.join(" + ")}) – kan kräva separata biljetter`);
@@ -231,6 +239,7 @@ async function behandlaAnnons(a) {
     rum: a.rum ?? null,
     boarea: a.boarea ?? null,
     tomtarea: a.tomtarea ?? null,
+    restidMin: matt.restidMin ?? null,
     prisJmforelse,
     aiOmdome,
     url: a.url,
@@ -289,7 +298,8 @@ for (const [id, t] of traffarLagrade) {
     (k.maxPris && t.pris && t.pris > k.maxPris) ||
     (k.minRum && t.rum && t.rum < k.minRum) ||
     (k.minBoarea && t.boarea && t.boarea < k.minBoarea) ||
-    (k.minTomtarea && t.tomtarea && t.tomtarea < k.minTomtarea);
+    (k.minTomtarea && t.tomtarea && t.tomtarea < k.minTomtarea) ||
+    (k.maxRestidStockholmMin && t.restidMin != null && t.restidMin > k.maxRestidStockholmMin);
   if (utanfor) {
     console.log(`  Städat bort ur flödet (utanför krav) [${id}]: ${t.adress}`);
     traffarLagrade.delete(id);

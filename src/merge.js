@@ -31,7 +31,8 @@ const utanfor = (t) =>
   (k.maxPris && t.pris && t.pris > k.maxPris) ||
   (k.minRum && t.rum && t.rum < k.minRum) ||
   (k.minBoarea && t.boarea && t.boarea < k.minBoarea) ||
-  (k.minTomtarea && t.tomtarea && t.tomtarea < k.minTomtarea);
+  (k.minTomtarea && t.tomtarea && t.tomtarea < k.minTomtarea) ||
+  (k.maxRestidStockholmMin && t.restidMin != null && t.restidMin > k.maxRestidStockholmMin);
 
 const traffar = [...karta.values()]
   .filter((t) => !t.dold && !utanfor(t))
