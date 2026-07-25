@@ -51,7 +51,11 @@ async function skickaHaWebhook({ titel, meddelande, lank, lat, lon, bild }) {
         bild: bild ?? "",
       }),
     });
-    if (!res.ok) console.warn(`HA-webhook svarade ${res.status}`);
+    if (!res.ok) {
+      console.warn(`HA-webhook svarade ${res.status}`);
+      console.warn(`  Server: ${res.headers.get("server") ?? "okänd"}, cf-ray: ${res.headers.get("cf-ray") ?? "saknas"}`);
+      console.warn(`  Svarstext: ${(await res.text()).slice(0, 500)}`);
+    }
   } catch (err) {
     console.warn(`HA-webhook nåddes inte: ${err.message}`);
   }
