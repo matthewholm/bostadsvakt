@@ -148,7 +148,7 @@ lagrade.set(a.id, {
   id: a.id,
   tidpunkt: new Date().toISOString(),
   kalla: `${a.kalla} · analyserad`,
-  typ: typNamn,
+  typ: a.typ ? typNamn : "",
   omrade: a.ort || "",
   adress: a.adress,
   pris: a.pris ?? null,

@@ -207,13 +207,18 @@ async function behandlaAnnons(a) {
     adress: a.adress, typ: typNamn, fakta, pris: a.pris, k, pendling, omgivning, poang, prisJmforelse,
   });
 
-  // Spara ALLA hus till flödet (Bostäder), behåll ev. panel-flaggor
+  // Spara ALLA hus till flödet (Bostäder), behåll ev. panel-flaggor.
+  // typ sparas tomt (inte "Bostad"-platshållaren) när hustypen är okänd –
+  // annars tolkar hårdfiltret/städningen nedan "Bostad" som en riktig,
+  // otillåten hustyp och huset försvinner igen trots att typen bara var
+  // okänd (samma mönster som adress-fallbacken, upptäckt när de fyra
+  // återställda Hemnet-husen fortfarande städades bort).
   traffarLagrade.set(a.id, {
     ...traffarLagrade.get(a.id),
     id: a.id,
     tidpunkt: new Date().toISOString(),
     kalla: a.kalla,
-    typ: typNamn,
+    typ: a.typ ? typNamn : "",
     omrade: a.omrade || a.ort || "",
     adress: a.adress,
     pris: a.pris ?? null,
