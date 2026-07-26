@@ -78,7 +78,8 @@ Allt sparas i [config.json](config.json), som du förstås också kan redigera d
     "maxAvståndVattenM": 1500,
     "maxAvståndSkogM": 500,
     "kravVattenEllerSkog": true,      // minst ett av vatten/skog måste uppfyllas
-    "maxGrannarInom300m": 15
+    "maxGrannarInom300m": 15,
+    "andraMal": { "namn": "Kontoret", "adress": "Sveavägen 1, Stockholm" } // valfritt, bara informativt – inget hårt filter
   },
   "notiser": { "endastTräffar": true } // false = notis om ALLA nya, träffar märks med 🎯
 }

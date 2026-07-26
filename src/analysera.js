@@ -143,6 +143,11 @@ await notis({
 
 // Spara i galleriet (manuellt analyserade hus hamnar också bland Bostäder)
 const lagrade = new Map(lasTraffar().map((t) => [t.id, t]));
+const tidigareHus = lagrade.get(a.id);
+const prisSankning =
+  a.pris != null && tidigareHus?.pris != null && a.pris < tidigareHus.pris
+    ? { fran: tidigareHus.pris, till: a.pris, tidpunkt: new Date().toISOString() }
+    : (tidigareHus?.prisSankning ?? null);
 lagrade.set(a.id, {
   ...lagrade.get(a.id),
   id: a.id,
@@ -157,6 +162,7 @@ lagrade.set(a.id, {
   tomtarea: a.tomtarea ?? null,
   restidMin: matt.restidMin ?? null,
   prisJmforelse,
+  prisSankning,
   url: a.url,
   bild: a.bild ?? null,
   lat: pos?.lat ?? null,

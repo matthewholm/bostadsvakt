@@ -26,25 +26,31 @@ function nastaVardagsmorgon() {
   return { date: d.toISOString().slice(0, 10), time: "07:30" };
 }
 
-// Snabbaste resan med kollektivtrafik till Stockholm C en vanlig
-// vardagsmorgon. Utöver restiden flaggar den (best effort) om resan går via
-// flera trafikbolag (typiskt SL + UL runt Uppsala – kan betyda separata
-// biljetter) och om någon delsträcka kräver förbeställning (vanligt för
-// anropsstyrd trafik i Norrtäljes ytterområden, se skärmdumpen som
-// triggade det här).
-export async function resaTillStockholm(lat, lon) {
+// Snabbaste resan med kollektivtrafik till ett mål en vanlig vardagsmorgon.
+// Målet anges antingen som en ResRobot-hållplats-id (destId, t.ex. Stockholm
+// C) eller som koordinater (destLat/destLon, för fritt valda mål som inte
+// har ett hållplats-id, t.ex. en arbetsplats). Utöver restiden flaggar den
+// (best effort) om resan går via flera trafikbolag (typiskt SL + UL runt
+// Uppsala – kan betyda separata biljetter) och om någon delsträcka kräver
+// förbeställning (vanligt för anropsstyrd trafik i Norrtäljes ytterområden,
+// se skärmdumpen som triggade det här).
+async function resaTillMal(lat, lon, { destId, destLat, destLon }) {
   if (!harResrobotNyckel()) return null;
 
   const { date, time } = nastaVardagsmorgon();
   const params = new URLSearchParams({
     originCoordLat: String(lat),
     originCoordLong: String(lon),
-    destId: STOCKHOLM_C,
     date,
     time,
     format: "json",
     accessId: process.env.RESROBOT_API_KEY,
   });
+  if (destId) params.set("destId", destId);
+  else {
+    params.set("destCoordLat", String(destLat));
+    params.set("destCoordLong", String(destLon));
+  }
 
   const res = await fetch(`https://api.resrobot.se/v2.1/trip?${params}`);
   if (!res.ok) {
@@ -63,6 +69,16 @@ export async function resaTillStockholm(lat, lon) {
   const basta = resor.reduce((a, b) => (b.minuter < a.minuter ? b : a));
   const { operatorer, forbestallning } = analyseraResa(basta.trip);
   return { restidMin: basta.minuter, operatorer, forbestallning };
+}
+
+export async function resaTillStockholm(lat, lon) {
+  return resaTillMal(lat, lon, { destId: STOCKHOLM_C });
+}
+
+// Fritt andra pendlingsmål (t.ex. en arbetsplats), angivet som koordinater
+// – se src/index.js för hur adressen geokodas till dem.
+export async function resaTillAndraMalet(lat, lon, malLat, malLon) {
+  return resaTillMal(lat, lon, { destLat: malLat, destLon: malLon });
 }
 
 // "PT1H23M" → 83

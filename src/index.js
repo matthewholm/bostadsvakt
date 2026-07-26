@@ -4,7 +4,8 @@
 import { readFileSync } from "node:fs";
 import { harBooliNycklar, sokAnnonser } from "./booli.js";
 import { harImap, hamtaMailAnnonser } from "./mailsource.js";
-import { narmasteHallplatser, resaTillStockholm, harResrobotNyckel } from "./transit.js";
+import { narmasteHallplatser, resaTillStockholm, resaTillAndraMalet, harResrobotNyckel } from "./transit.js";
+import { geokoda } from "./geocode.js";
 import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
 import { lasSedda, sparaSedda } from "./state.js";
@@ -36,6 +37,17 @@ if (!harBooliNycklar() && !harImap()) {
 }
 if (!harResrobotNyckel()) {
   console.warn("RESROBOT_API_KEY saknas – hållplatskollen hoppas över tills du lagt in en nyckel.");
+}
+
+// Andra pendlingsmål (t.ex. en arbetsplats): valfritt, geokodas en gång här
+// och återanvänds för alla hus i den här körningen – adressen ändras ju
+// inte hus för hus.
+let andraMalKoord = null;
+if (harResrobotNyckel() && k.andraMal?.adress) {
+  andraMalKoord = await geokoda(k.andraMal.adress);
+  if (!andraMalKoord) {
+    console.warn(`  Kunde inte geokoda andra pendlingsmålet "${k.andraMal.adress}" – hoppas över.`);
+  }
 }
 
 const sedda = lasSedda();
@@ -164,6 +176,16 @@ async function behandlaAnnons(a) {
       }
     }
 
+    // Andra pendlingsmålet är bara informativt – inget hårt filter, ingen
+    // "dealbreaker"-logik som för Stockholm ovan.
+    if (andraMalKoord) {
+      const resaAndra = await resaTillAndraMalet(a.lat, a.lon, andraMalKoord.lat, andraMalKoord.lon);
+      if (resaAndra) {
+        pendling.push(`${k.andraMal.namn || "Andra målet"}: ca ${fmtTid(resaAndra.restidMin)}`);
+        matt.restidAndraMalMin = resaAndra.restidMin;
+      }
+    }
+
     const n = await naturInfo(a.lat, a.lon);
     if (n) {
       omgivning.push(
@@ -221,6 +243,15 @@ async function behandlaAnnons(a) {
       })
     : null;
 
+  // Prisfall: jämför mot priset huset hade förra gången vi sparade det.
+  // Sjunker det, spara vem/vad det sjönk från – annars behåll en ev. tidigare
+  // sänkning så den inte försvinner bara för att priset står stilla en körning.
+  const tidigareHus = traffarLagrade.get(a.id);
+  const prisSankning =
+    a.pris != null && tidigareHus?.pris != null && a.pris < tidigareHus.pris
+      ? { fran: tidigareHus.pris, till: a.pris, tidpunkt: new Date().toISOString() }
+      : (tidigareHus?.prisSankning ?? null);
+
   // Spara ALLA hus till flödet (Bostäder), behåll ev. panel-flaggor.
   // typ sparas tomt (inte "Bostad"-platshållaren) när hustypen är okänd –
   // annars tolkar hårdfiltret/städningen nedan "Bostad" som en riktig,
@@ -240,7 +271,9 @@ async function behandlaAnnons(a) {
     boarea: a.boarea ?? null,
     tomtarea: a.tomtarea ?? null,
     restidMin: matt.restidMin ?? null,
+    restidAndraMalMin: matt.restidAndraMalMin ?? null,
     prisJmforelse,
+    prisSankning,
     aiOmdome,
     url: a.url,
     bild: a.bild ?? null,
