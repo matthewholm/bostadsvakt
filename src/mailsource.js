@@ -69,7 +69,7 @@ export async function hamtaMailAnnonser(areas = []) {
   for (const a of annonser.values()) {
     if (a.lat != null) continue;
     for (const { fraga, ort } of byggFragor(a, areas)) {
-      const pos = await geokoda(fraga);
+      const pos = await geokoda(fraga, ort);
       await paus(1100);
       if (pos) {
         a.lat = pos.lat;

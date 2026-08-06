@@ -19,6 +19,5 @@ jobs:
 
       - name: Skicka sammanfattning
         env:
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           HA_WEBHOOK_URL: ${{ secrets.HA_WEBHOOK_URL }}
         run: node src/digest.js

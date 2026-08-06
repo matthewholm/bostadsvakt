@@ -58,7 +58,7 @@ async function fragaOverpass(query) {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "bostadsvakt (github.com/mathiasmholm/bostadsvakt)",
+          "User-Agent": "bostadsvakt (github.com/matthewholm/bostadsvakt)",
         },
         body: "data=" + encodeURIComponent(query),
       });

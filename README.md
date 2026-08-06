@@ -13,7 +13,7 @@ Körs gratis i GitHub Actions var 30:e minut – din dator behöver inte vara p�
 1. **Booli API** – hämtar nya villaannonser för sökområdena i [config.json](config.json).
 2. **Trafiklab ResRobot** – hittar närmaste hållplats och närmaste tågstation från husets koordinater.
 3. **OpenStreetMap (Overpass)** – uppskattar avstånd till vatten och skog samt räknar byggnader inom 300 m (grannar). Ingen nyckel behövs.
-4. **ntfy.sh** – skickar push med adress, pris och alla avstånd, med länk direkt till annonsen.
+4. **Home Assistant-webhook** – skickar push med adress, pris och alla avstånd, med länk direkt till annonsen.
 
 Redan sedda annonser sparas i `data/seen.json` så att du bara får notis en gång per hus. Allra första körningen skickar inga notiser – den bara "nollställer" mot dagens utbud.
 
@@ -43,7 +43,7 @@ Kräver `BOOLI_CALLER_ID` + `BOOLI_PRIVATE_KEY`. Boolis publika API-sida är ned
 |---|---|---|
 | **Datakälla** | Se avsnittet ovan – mejlbevakning (A) och/eller Booli-API (B). | `IMAP_USER`, `IMAP_PASSWORD` eller `BOOLI_CALLER_ID`, `BOOLI_PRIVATE_KEY` |
 | **Trafiklab** | Skapa gratiskonto på [developer.trafiklab.se](https://developer.trafiklab.se), skapa ett projekt och lägg till API:t **ResRobot v2.1**. | `RESROBOT_API_KEY` |
-| **ntfy** | Installera appen **ntfy** (App Store/Google Play). Prenumerera på ett eget hemligt ämne, t.ex. `bostadsvakt-x7k2p9q4` – välj något ogissbart, alla som kan namnet kan se notiserna. | `NTFY_TOPIC` |
+| **Home Assistant** | En webhook-automation i din HA som skickar vidare till mobilappen/apparna (se "Notiser till flera personer" nedan). | `HA_WEBHOOK_URL` |
 
 ### 2. Lägg in hemligheterna i GitHub
 
@@ -53,7 +53,7 @@ Gå till repot → **Settings → Secrets and variables → Actions → New repo
 gh secret set BOOLI_CALLER_ID
 gh secret set BOOLI_PRIVATE_KEY
 gh secret set RESROBOT_API_KEY
-gh secret set NTFY_TOPIC
+gh secret set HA_WEBHOOK_URL
 ```
 
 ### 3. Starta
@@ -62,7 +62,7 @@ Gå till fliken **Actions** i repot, välj workflowen **Bostadsvakt** och klicka
 
 ## Anpassa kriterierna
 
-**Allra enklast: kontrollpanelen** — en webbsida med reglage för alla kriterier, knappar för att köra test/bevakning och lista över senaste körningarna. Den hostas i Home Assistant: `https://home.houseofholm.se/local/bostadsvakt.html`. Logga in med en fine-grained GitHub-token (Contents + Actions, read/write, endast detta repo). Koden ligger i [bostadsvakt-panel](https://github.com/mathiasmholm/bostadsvakt-panel) — uppdatera kopian med `wget` enligt panel-repots README.
+**Allra enklast: kontrollpanelen** — en webbsida med reglage för alla kriterier, knappar för att köra test/bevakning och lista över senaste körningarna. Den hostas i Home Assistant: `https://home.houseofholm.se/local/bostadsvakt.html`. Logga in med en fine-grained GitHub-token (Contents + Actions, read/write, endast detta repo). Koden ligger i [bostadsvakt-panel](https://github.com/matthewholm/bostadsvakt-panel) — uppdatera kopian med `wget` enligt panel-repots README.
 
 **Eller via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. Funkar även i GitHub-appen i mobilen. Resultatet visas i körningens sammanfattning.
 
@@ -90,7 +90,7 @@ Allt sparas i [config.json](config.json), som du förstås också kan redigera d
 Gå till fliken **Actions** → välj **Testa Bostadsvakt** i vänsterspalten → klicka **Run workflow**. Testet kör hela kedjan med ett låtsashus utanför Norrtälje och funkar även innan alla nycklar är på plats:
 
 - Utan några secrets alls: loggen visar natur-kollen och notisen som text.
-- Med `NTFY_TOPIC` satt: du får en riktig push i mobilen inom någon minut. 📱
+- Med `HA_WEBHOOK_URL` satt: du får en riktig push i mobilen inom någon minut. 📱
 - Med `RESROBOT_API_KEY` satt: hållplatskollen testas också.
 
 Klicka på körningen i listan för att se loggen steg för steg.
@@ -103,7 +103,7 @@ Skapa en fil `.env` i projektmappen:
 BOOLI_CALLER_ID=...
 BOOLI_PRIVATE_KEY=...
 RESROBOT_API_KEY=...
-NTFY_TOPIC=...
+HA_WEBHOOK_URL=...
 ```
 
 Kör sedan:
@@ -112,7 +112,7 @@ Kör sedan:
 npm start
 ```
 
-Utan `NTFY_TOPIC` skrivs notiserna bara ut i terminalen (torrkörning).
+Utan `HA_WEBHOOK_URL` skrivs notiserna bara ut i terminalen (torrkörning).
 
 ## Bra att veta
 

@@ -1,6 +1,6 @@
 // Bostadsvakt – letar nya bostäder via Booli-API och/eller bevakningsmejl
 // (Hemnet + Booli), kollar pendling (ResRobot), vatten/skog/grannar
-// (OpenStreetMap) och skickar push-notiser via ntfy.
+// (OpenStreetMap) och skickar push-notiser via en Home Assistant-webhook.
 import { readFileSync } from "node:fs";
 import { harBooliNycklar, sokAnnonser } from "./booli.js";
 import { harImap, hamtaMailAnnonser } from "./mailsource.js";
@@ -398,18 +398,18 @@ async function korTest() {
     console.log("   ⏭ Hoppar över – IMAP_USER/IMAP_PASSWORD är inte satta.");
   }
 
-  console.log("4. Skickar testnotis (ntfy)...");
+  console.log("4. Skickar testnotis (HA-webhook)...");
   await notis({
     titel: "Testnotis från Bostadsvakt",
     meddelande: [`${hus.adress}, ${hus.ort} (låtsashus)`, ...rader, "✓ Allt fungerar"].join("\n"),
-    lank: "https://github.com/mathiasmholm/bostadsvakt",
+    lank: "https://github.com/matthewholm/bostadsvakt",
     lat: hus.lat,
     lon: hus.lon,
   });
   console.log(
-    process.env.NTFY_TOPIC
+    process.env.HA_WEBHOOK_URL
       ? "   ✔ Skickad! Kolla din mobil."
-      : "   ⏭ NTFY_TOPIC saknas – notisen skrevs bara ut ovan."
+      : "   ⏭ HA_WEBHOOK_URL saknas – notisen skrevs bara ut ovan."
   );
   console.log("\n=== TEST KLART ===");
 }
