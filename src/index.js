@@ -87,11 +87,38 @@ if (harImap()) {
   }
 }
 
+// ---- Slå ihop dubbletter mellan källor ----
+// Hemnet och Booli ger samma hus olika id (hemnet-XXXX / booli-XXXX), så ett
+// id-baserat "redan sedd"-test (som sedda/traffarLagrade gör) fångar inte när
+// samma hus dyker upp via båda. Matcha på normaliserad adress+område istället:
+// dels mot redan sparade hus (annat körnings-id men samma adress), dels mot
+// tidigare annonser inom samma körning.
+const normAdr = (s) => (s ?? "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/\s+/g, " ").trim();
+const adressNyckel = (a) => `${normAdr(a.adress)}|${normAdr(a.omrade)}`;
+
+const kandaAdresser = new Map();
+for (const t of traffarLagrade.values()) {
+  if (t.adress) kandaAdresser.set(adressNyckel(t), t.id);
+}
+
+const annonserUnika = [];
+for (const a of annonser) {
+  if (!a.adress) { annonserUnika.push(a); continue; } // inget att matcha mot
+  const nyckel = adressNyckel(a);
+  const befintligtId = kandaAdresser.get(nyckel);
+  if (befintligtId && befintligtId !== a.id) {
+    console.log(`  Dubblett: "${a.adress}" (${a.id}) matchar redan känt hus ${befintligtId} – hoppar över.`);
+    continue;
+  }
+  kandaAdresser.set(nyckel, a.id);
+  annonserUnika.push(a);
+}
+
 // ---- Bedöm och notifiera ----
 const tillatnaTyper = k.objectType.split(",").map(normTyp);
 const slutprisData = lasSlutpriser(); // läses en gång, inkl. ev. nya poster ovan
 
-for (const a of annonser) {
+for (const a of annonserUnika) {
   if (sedda.has(a.id)) continue;
   sedda.add(a.id);
   nya++;
