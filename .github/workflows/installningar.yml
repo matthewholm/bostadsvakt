@@ -41,6 +41,14 @@ on:
         type: choice
         options: ["behåll", "ja", "nej"]
         default: "behåll"
+      # Hela kriterieuppsättningen som JSON. Finns för att Home OS ska kunna
+      # skicka alla fält på en gång – GitHub tillåter bara tio inputs, och de
+      # handskrivna fälten ovan täcker inte hustyp, rum, ytor eller restid.
+      # Lämna tomt när du fyller i formuläret för hand.
+      json:
+        description: "Alla kriterier som JSON (används av Home OS – lämna tomt här)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -65,6 +73,7 @@ jobs:
           MAX_GRANNAR: ${{ inputs.maxGrannar }}
           KRAV_NATUR: ${{ inputs.kravNatur == 'behåll' && '' || inputs.kravNatur }}
           ENDAST_TRAFFAR: ${{ inputs.endastTraffar == 'behåll' && '' || inputs.endastTraffar }}
+          KRITERIER_JSON: ${{ inputs.json }}
         run: node src/uppdatera-config.js
 
       - name: Visa resultat i sammanfattningen
