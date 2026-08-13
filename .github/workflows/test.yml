@@ -19,6 +19,12 @@ jobs:
 
       - run: npm ci
 
+      # Nätfria enhetstester: län/biljettlogik, geokodningsspärren och
+      # matchningens redovisning. Kräver varken nycklar eller internet, så de
+      # kan köras först och fånga logikfel innan de riktiga anropen görs.
+      - name: Kör enhetstester
+        run: npm test
+
       - name: Kör testläge
         env:
           IMAP_HOST: ${{ secrets.IMAP_HOST }}

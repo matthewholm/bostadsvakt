@@ -4,13 +4,14 @@
 import { readFileSync } from "node:fs";
 import { harBooliNycklar, sokAnnonser } from "./booli.js";
 import { harImap, hamtaMailAnnonser } from "./mailsource.js";
-import { narmasteHallplatser, resaTillStockholm, resaTillAndraMalet, harResrobotNyckel } from "./transit.js";
-import { geokoda } from "./geocode.js";
+import { narmasteHallplatser, resaTillStockholm, resaTillAndraMalet, turtathet, harResrobotNyckel } from "./transit.js";
+import { geokoda, slaUppPlats } from "./geocode.js";
+import { myndighetForKommun, visaKommun } from "./lan.js";
 import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
 import { lasSedda, sparaSedda } from "./state.js";
 import { lasTraffar, sparaTraffar } from "./matches.js";
-import { beraknaPoang } from "./score.js";
+import { beraknaMatchning } from "./score.js";
 import { skrivBedomning } from "./ai.js";
 import { lasSlutpriser, sparaSlutpriser, jamforPris } from "./slutpriser.js";
 
@@ -43,10 +44,15 @@ if (!harResrobotNyckel()) {
 // och återanvänds för alla hus i den här körningen – adressen ändras ju
 // inte hus för hus.
 let andraMalKoord = null;
+let andraMalMyndighet = null;
 if (harResrobotNyckel() && k.andraMal?.adress) {
-  andraMalKoord = await geokoda(k.andraMal.adress);
+  andraMalKoord = await geokoda(k.andraMal.adress, { omraden: config.searches.map((s) => s.namn) });
   if (!andraMalKoord) {
     console.warn(`  Kunde inte geokoda andra pendlingsmålet "${k.andraMal.adress}" – hoppas över.`);
+  } else {
+    // Målets län avgör (tillsammans med husets) om resan dit korsar en
+    // länsgräns och därmed kräver två biljetter – se lan.js.
+    andraMalMyndighet = myndighetForKommun(andraMalKoord.kommun);
   }
 }
 
@@ -137,7 +143,10 @@ for (const a of annonserUnika) {
   }
 }
 
-async function behandlaAnnons(a) {
+// `tyst` används av rättningsomgången nedan: samma analys, men utan notis –
+// ett hus som råkade ligga fel på kartan sedan i somras ska inte pusha ut sig
+// själv igen bara för att nålen flyttades till rätt ställe.
+async function behandlaAnnons(a, { tyst = false } = {}) {
   // Hårda filter: hustyp, pris, rum och yta. Hus utanför dessa visas inte
   // alls (bara uteslutna om värdet är känt). Läge/natur avgör Träff nedan.
   if (a.typ && !tillatnaTyper.includes(normTyp(a.typ))) {
@@ -166,9 +175,30 @@ async function behandlaAnnons(a) {
   const noteringar = [];
   const matt = {};
   let uppfyller = true;
+  let turer = null; // turtäthet från närmaste hållplats, se nedan
+
+  // Vilken kommun – och därmed vilket trafikbolag/biljettsystem – gäller här?
+  // Mejlkällan har normalt redan verifierat kommunen vid geokodningen. Booli-
+  // annonser kommer med färdiga koordinater utan att ha passerat geokodaren,
+  // så för dem slår vi upp kommunen baklänges. Utan det här steget vet vi inte
+  // om huset ligger i SL- eller UL-land, och då blir biljettbeskedet en gissning
+  // – vilket är precis vad som gav "UL + SJ" för hus i Norrtälje.
+  let myndighet = myndighetForKommun(a.kommun);
+  let kommunNamn = a.kommun ? visaKommun(a.kommun) : "";
+  if (!myndighet && a.lat != null && a.lon != null) {
+    const plats = await slaUppPlats(a.lat, a.lon);
+    if (plats) {
+      myndighet = myndighetForKommun(plats.kommun);
+      kommunNamn = plats.kommunNamn;
+    }
+  }
 
   if (a.lat != null && a.lon != null) {
-    const h = await narmasteHallplatser(a.lat, a.lon);
+    if (kommunNamn && myndighet) {
+      pendling.push(`Läge: ${kommunNamn} kommun (${myndighet.lan}) – ${myndighet.namn}-område`);
+    }
+
+    const h = await narmasteHallplatser(a.lat, a.lon, myndighet);
     if (h?.narmaste) {
       pendling.push(`Hållplats: ${h.narmaste.namn} · ${h.narmaste.avstand} m`);
       if (h.narmasteTag && h.narmasteTag.namn !== h.narmaste.namn) {
@@ -176,12 +206,26 @@ async function behandlaAnnons(a) {
       }
       matt.hallplatsAvstand = h.narmaste.avstand;
       if (h.narmaste.avstand > k.maxAvståndHållplatsM) uppfyller = false;
+
+      // Hur ofta går det egentligen härifrån? Att det FINNS en hållplats
+      // säger ingenting – i Norrtäljes ytterområden kan närmaste "hållplats"
+      // vara en punkt som bara trafikeras av anropsstyrd trafik man måste
+      // ringa och beställa. Det syns nu istället för att gömmas.
+      // h.sl[0] är närmaste SL-hållplats (bara i SL-land) och används som
+      // extra kontroll av just närtrafiken – se sl.js.
+      turer = await turtathet({ ...h.narmaste, slId: h.sl?.[0]?.id ?? null }, myndighet);
+      if (turer) {
+        const spann = turer.forsta && turer.sista ? ` (${turer.forsta}–${turer.sista})` : "";
+        pendling.push(`Turtäthet: ${turer.text}${spann}`);
+        matt.turtathetAvgangar = turer.antal;
+        for (const text of turer.bokning) pendling.push(`⚠ ${text}`);
+      }
     } else if (h) {
       pendling.push("Ingen hållplats inom 3 km");
       uppfyller = false;
     }
 
-    const resa = await resaTillStockholm(a.lat, a.lon);
+    const resa = await resaTillStockholm(a.lat, a.lon, myndighet);
     if (resa) {
       // Hårt filter precis som pris/rum/yta: en resa på över maxRestid är
       // inte "en svag länk" man ändå vill se, det är en dealbreaker – huset
@@ -192,24 +236,32 @@ async function behandlaAnnons(a) {
         console.log(`  Utanför filter (restid ${resa.restidMin} min > ${k.maxRestidStockholmMin} min) [${a.id}]: ${a.adress}`);
         return;
       }
-      pendling.push(`Stockholm C: ca ${fmtTid(resa.restidMin)}`);
+      const byten = resa.byten === 0 ? "utan byte" : `${resa.byten} byte${resa.byten > 1 ? "n" : ""}`;
+      pendling.push(`Stockholm C: ca ${fmtTid(resa.restidMin)} · ${byten}`);
       matt.restidMin = resa.restidMin;
-      // Informativt, inte diskvalificerande – man vill veta i förväg, inte missa huset.
-      if (resa.operatorer.length > 1) {
-        pendling.push(`⚠ Flera trafikbolag (${resa.operatorer.join(" + ")}) – kan kräva separata biljetter`);
+
+      // Biljettbeskedet utgår från LÄNEN, inte från hur många bolagsnamn som
+      // råkar nämnas i resan. Byte mellan SL-buss och pendeltåg ger två
+      // operatörsnamn men är fortfarande en enda SL-biljett; det som faktiskt
+      // kostar en extra biljett är att korsa länsgränsen Uppsala–Stockholm.
+      if (resa.biljett) {
+        pendling.push(resa.biljett.tvaBiljetter ? `⚠ ${resa.biljett.text}` : resa.biljett.text);
       }
-      for (const text of resa.forbestallning) {
-        pendling.push(`⚠ Kräver förbeställning: ${text}`);
-      }
+      // Operatörerna är numera ren upplysning, inte en varning.
+      if (resa.operatorer.length) pendling.push(`Trafikeras av: ${resa.operatorer.join(", ")}`);
+      for (const text of resa.bokning) pendling.push(`⚠ ${text}`);
     }
 
     // Andra pendlingsmålet är bara informativt – inget hårt filter, ingen
     // "dealbreaker"-logik som för Stockholm ovan.
     if (andraMalKoord) {
-      const resaAndra = await resaTillAndraMalet(a.lat, a.lon, andraMalKoord.lat, andraMalKoord.lon);
+      const resaAndra = await resaTillAndraMalet(
+        a.lat, a.lon, andraMalKoord.lat, andraMalKoord.lon, myndighet, andraMalMyndighet
+      );
       if (resaAndra) {
         pendling.push(`${k.andraMal.namn || "Andra målet"}: ca ${fmtTid(resaAndra.restidMin)}`);
         matt.restidAndraMalMin = resaAndra.restidMin;
+        if (resaAndra.biljett?.tvaBiljetter) pendling.push(`⚠ ${k.andraMal.namn || "Andra målet"}: ${resaAndra.biljett.text}`);
       }
     }
 
@@ -236,7 +288,11 @@ async function behandlaAnnons(a) {
     noteringar.push("Plats okänd – avstånden kunde inte kontrolleras");
     uppfyller = false;
   }
-  const poang = beraknaPoang(k, matt);
+  // Matchningen returnerar numera hela uträkningen, inte bara siffran: varje
+  // faktors mätvärde, delpoäng, vikt och bidrag. Det är det som gör att man
+  // kan svara på "varför är det här huset 80 och det där 20?" – se score.js.
+  const matchning = beraknaMatchning(k, matt);
+  const poang = matchning.poang;
 
   // Prisjämförelse: hur ligger huset till mot nyligen sålda hus i samma
   // område (kr/m²)? Kräver att slutpriser-bevakningen samlat in tillräckligt
@@ -267,6 +323,10 @@ async function behandlaAnnons(a) {
   const aiOmdome = a.lat != null
     ? await skrivBedomning({
         adress: a.adress, typ: typNamn, fakta, pris: a.pris, k, pendling, omgivning, poang, prisJmforelse,
+        // AI:n får numera kommun/län, biljettläget och poängens uppdelning.
+        // Utan det upprepade den bara pendlingsraderna – och när de sa
+        // "UL + SJ" för ett hus i Norrtälje skrev den vidare det felet.
+        kommun: kommunNamn, myndighet, matchning, turtathet: turer,
       })
     : null;
 
@@ -306,11 +366,32 @@ async function behandlaAnnons(a) {
     bild: a.bild ?? null,
     lat: a.lat ?? null,
     lon: a.lon ?? null,
+    // Kommun/län/myndighet sparas så panelen kan visa var huset FAKTISKT
+    // ligger och vilket biljettsystem som gäller, utan att gissa av nålen.
+    kommun: kommunNamn || null,
+    lan: myndighet?.lan ?? null,
+    myndighet: myndighet?.kod ?? null,
+    // "hus" | "gata" | "ort" – hur exakt kartnålen är. En ortsnivåträff kan
+    // ligga kilometervis fel och ska inte se lika säker ut i panelen som en
+    // husnummerträff.
+    platsPrecision: a.platsPrecision ?? null,
+    turtathet: turer
+      ? { antal: turer.antal, klass: turer.klass, text: turer.text,
+          forsta: turer.forsta, sista: turer.sista,
+          kraverBokning: turer.kraverBokning, bokning: turer.bokning }
+      : null,
     pendling,
     omgivning,
     uppfyller,
     poang,
+    // Hela uträkningen bakom poängen, så panelen kan visa varför.
+    matchning,
   });
+
+  if (tyst) {
+    console.log(`  Omvärderat [${a.id}]: ${a.adress} → ${kommunNamn || "okänd kommun"}, matchning ${poang ?? "–"}/100`);
+    return;
+  }
 
   // Notis: bara för träffar (eller för alla om så valts), aldrig på första
   // körningen eller för Hemnets egna rekommendationer ("Hemnet Max") – de
@@ -336,6 +417,10 @@ async function behandlaAnnons(a) {
       ...sektion("OBS", noteringar),
       "",
       poang != null ? `Matchning: ${poang}/100` : "",
+      // Kort redovisning direkt i notisen – annars är siffran bara en siffra.
+      ...(matchning.delar.length
+        ? [matchning.delar.map((d) => `${d.namn} ${d.delpoang}/100`).join(" · ")]
+        : []),
       ...(aiOmdome ? ["", aiOmdome] : []),
       uppfyller ? "✓ Uppfyller alla dina krav" : "Uppfyller inte alla krav",
       `via ${a.kalla}`,
@@ -348,6 +433,99 @@ async function behandlaAnnons(a) {
   });
   console.log(`  Notis skickad: ${a.adress} (${a.kalla})`);
 }
+
+// ---- Rätta redan sparade hus med overifierad plats ----
+// De hus som sparades innan geokodningen började verifiera kommunen ligger
+// kvar med sina felaktiga koordinater, och de bearbetas aldrig om: deras id
+// står i `sedda`, och mejlen de kom ur är sedan länge lästa. Utan det här
+// steget syns alltså fixen bara på NYA hus, medan alla gamla nålar fortsätter
+// peka fel – och det var just de felplacerade husen som var problemet.
+//
+// Ett hus känns igen på att det saknar `kommun` (fältet fanns inte förut).
+// Antalet per körning är begränsat för att hålla körtiden nere och vara snäll
+// mot gratis-API:erna; resten tas nästa körning tills alla är genomgångna.
+const MAX_RATTADE_PER_KORNING = 15;
+
+async function rattaPlatser() {
+  const kandidater = [...traffarLagrade.values()]
+    .filter((t) => !t.kommun && t.adress && (t.platsForsok ?? 0) < 3)
+    .slice(0, MAX_RATTADE_PER_KORNING);
+  if (!kandidater.length) return;
+
+  console.log(`\nRättar plats för ${kandidater.length} tidigare sparade hus (overifierade koordinater)...`);
+  let rattade = 0;
+  let rensade = 0;
+
+  for (const t of kandidater) {
+    try {
+      // `omrade` på ett sparat hus är annonsens ort ("Väddö", "Skebobruk").
+      // Går den att slå upp till en kommun låses uppslaget till just den.
+      const pos = await geokoda(t.adress, {
+        ort: t.omrade,
+        omraden: config.searches.map((s) => s.namn),
+      });
+
+      if (!pos) {
+        // Ingen verifierbar plats: nollställ koordinaterna hellre än att låta
+        // en felaktig nål stå kvar. Panelen visar då "Plats okänd", vilket är
+        // ärligare än ett hus utplacerat i fel kommun.
+        traffarLagrade.set(t.id, {
+          ...t,
+          lat: null, lon: null, platsPrecision: null,
+          platsForsok: (t.platsForsok ?? 0) + 1,
+        });
+        rensade++;
+        console.log(`  Ingen verifierad plats för "${t.adress}" (${t.omrade || "okänt område"}) – nålen tas bort.`);
+        continue;
+      }
+
+      const flyttadKm = t.lat != null
+        ? Math.round(avstandKm(t.lat, t.lon, pos.lat, pos.lon))
+        : null;
+
+      // Kör hela analysen igen från den RÄTTA platsen. Hållplats, turtäthet,
+      // restid, natur, grannar och matchning mättes ju alla på fel ställe.
+      await behandlaAnnons({
+        id: t.id, kalla: t.kalla, typ: t.typ, omrade: t.omrade, adress: t.adress,
+        pris: t.pris, rum: t.rum, boarea: t.boarea, tomtarea: t.tomtarea,
+        url: t.url, bild: t.bild,
+        lat: pos.lat, lon: pos.lon,
+        kommun: pos.kommunNamn, lan: pos.lan, myndighet: pos.myndighet,
+        platsPrecision: pos.precision,
+      }, { tyst: true });
+
+      // behandlaAnnons kan avbryta tidigt (hårt filter på hustyp/pris/restid)
+      // och då skrivs ingen ny post. Utan räknaren nedan skulle ett sådant hus
+      // provas om varje körning och äta upp budgeten för de andra.
+      if (!traffarLagrade.get(t.id)?.kommun) {
+        traffarLagrade.set(t.id, { ...traffarLagrade.get(t.id), platsForsok: (t.platsForsok ?? 0) + 1 });
+        console.log(`  "${t.adress}" föll på ett hårt filter vid omvärderingen – lämnas orörd.`);
+        continue;
+      }
+
+      rattade++;
+      if (flyttadKm != null && flyttadKm >= 1) {
+        console.log(`  Flyttad ${flyttadKm} km: "${t.adress}" → ${pos.kommunNamn} kommun (${pos.myndighet}-område).`);
+      }
+    } catch (err) {
+      console.error(`  Kunde inte rätta ${t.id} (${t.adress}): ${err.message}`);
+      traffarLagrade.set(t.id, { ...t, platsForsok: (t.platsForsok ?? 0) + 1 });
+    }
+  }
+
+  const kvar = [...traffarLagrade.values()].filter((t) => !t.kommun && t.adress && (t.platsForsok ?? 0) < 3).length;
+  console.log(`  ${rattade} hus omvärderade, ${rensade} utan verifierbar plats. ${kvar} kvar till nästa körning.`);
+}
+
+// Grovt avstånd i km, bara för loggraden om hur långt ett hus flyttades.
+function avstandKm(lat1, lon1, lat2, lon2) {
+  const R = (d) => (d * Math.PI) / 180;
+  const dLat = R(lat2 - lat1), dLon = R(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(R(lat1)) * Math.cos(R(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(a));
+}
+
+await rattaPlatser();
 
 // Städa flödet: ta bort tidigare sparade hus som numera ligger utanför de
 // hårda filtren (t.ex. om maxpris sänkts) så listan alltid speglar kraven.
@@ -385,16 +563,39 @@ async function korTest() {
   const hus = { adress: "Testvägen 1", ort: "Norrtälje", lat: 59.7462, lon: 18.7734 };
   const rader = [];
 
-  console.log("1. Hållplatskoll (Trafiklab ResRobot)...");
+  // Testhuset ligger i Norrtälje – alltså Stockholms län och SL-område.
+  // Just det fallet gav tidigare "UL + SJ – kan kräva separata biljetter",
+  // så testet visar nu uttryckligen vilket bolag och vilken biljett som gäller.
+  console.log("1. Läge och trafikbolag...");
+  const plats = await slaUppPlats(hus.lat, hus.lon);
+  const myndighet = plats ? myndighetForKommun(plats.kommun) : null;
+  if (myndighet) {
+    rader.push(`Läge: ${plats.kommunNamn} kommun (${myndighet.lan}) – ${myndighet.namn}`);
+    console.log(`   ✔ ${plats.kommunNamn} kommun, ${myndighet.lan} → ${myndighet.namn}`);
+  } else {
+    console.log("   ✘ Kunde inte slå upp kommunen (Nominatim svarade inte).");
+  }
+
+  console.log("2. Hållplats, turtäthet och restid (Trafiklab ResRobot + SL)...");
   if (harResrobotNyckel()) {
-    const h = await narmasteHallplatser(hus.lat, hus.lon);
+    const h = await narmasteHallplatser(hus.lat, hus.lon, myndighet);
     if (h?.narmaste) {
       rader.push(`Hållplats: ${h.narmaste.namn} (${h.narmaste.avstand} m)`);
       console.log(`   ✔ Närmaste hållplats: ${h.narmaste.namn}, ${h.narmaste.avstand} m`);
-      const resa = await resaTillStockholm(hus.lat, hus.lon);
+
+      const turer = await turtathet({ ...h.narmaste, slId: h.sl?.[0]?.id ?? null }, myndighet);
+      if (turer) {
+        rader.push(`Turtäthet: ${turer.text}`);
+        console.log(`   ✔ ${turer.text}${turer.forsta ? ` (${turer.forsta}–${turer.sista})` : ""}`);
+        for (const b of turer.bokning) console.log(`   ⚠ ${b}`);
+      }
+
+      const resa = await resaTillStockholm(hus.lat, hus.lon, myndighet);
       if (resa) {
         rader.push(`Till Stockholm C: ca ${fmtTid(resa.restidMin)}`);
-        console.log(`   ✔ Restid till Stockholm C: ca ${fmtTid(resa.restidMin)}`);
+        console.log(`   ✔ Restid till Stockholm C: ca ${fmtTid(resa.restidMin)} (${resa.byten} byten)`);
+        if (resa.biljett) console.log(`   ✔ Biljett: ${resa.biljett.text}`);
+        if (resa.operatorer.length) console.log(`   · Trafikeras av: ${resa.operatorer.join(", ")}`);
       }
     } else {
       console.log("   ✘ Fick inget svar från ResRobot – kontrollera nyckeln.");
@@ -404,7 +605,7 @@ async function korTest() {
     console.log("   ⏭ Hoppar över – RESROBOT_API_KEY är inte satt.");
   }
 
-  console.log("2. Natur-koll (OpenStreetMap)...");
+  console.log("3. Natur-koll (OpenStreetMap)...");
   const n = await naturInfo(hus.lat, hus.lon);
   if (n) {
     rader.push(`Vatten: ~${n.vattenM} m · Skog: ~${n.skogM} m · Grannar: ${n.grannar}`);
@@ -413,7 +614,7 @@ async function korTest() {
     console.log("   ✘ Overpass svarade inte – testet fortsätter ändå.");
   }
 
-  console.log("3. Mejlkälla (IMAP)...");
+  console.log("4. Mejlkälla (IMAP)...");
   if (harImap()) {
     try {
       const { annonser: lista } = await hamtaMailAnnonser(config.searches.map((s) => s.namn));
@@ -425,7 +626,7 @@ async function korTest() {
     console.log("   ⏭ Hoppar över – IMAP_USER/IMAP_PASSWORD är inte satta.");
   }
 
-  console.log("4. Skickar testnotis (HA-webhook)...");
+  console.log("5. Skickar testnotis (HA-webhook)...");
   await notis({
     titel: "Testnotis från Bostadsvakt",
     meddelande: [`${hus.adress}, ${hus.ort} (låtsashus)`, ...rader, "✓ Allt fungerar"].join("\n"),

@@ -11,9 +11,42 @@ Körs gratis i GitHub Actions var 30:e minut – din dator behöver inte vara p�
 ## Så funkar den
 
 1. **Booli API** – hämtar nya villaannonser för sökområdena i [config.json](config.json).
-2. **Trafiklab ResRobot** – hittar närmaste hållplats och närmaste tågstation från husets koordinater.
-3. **OpenStreetMap (Overpass)** – uppskattar avstånd till vatten och skog samt räknar byggnader inom 300 m (grannar). Ingen nyckel behövs.
-4. **Home Assistant-webhook** – skickar push med adress, pris och alla avstånd, med länk direkt till annonsen.
+2. **Geokodning med kommunkontroll** (Nominatim/Photon) – översätter adressen till koordinater och **verifierar att träffen ligger i rätt kommun** innan den accepteras. Utan verifiering kan en gata med samma namn i fel del av landet accepteras blint. Se [src/geocode.js](src/geocode.js).
+3. **Trafiklab ResRobot** – närmaste hållplats, närmaste tågstation, restid till Stockholm C och **turtäthet** (hur många avgångar det faktiskt går en vanlig vardag). Täcker hela Sverige, alltså både SL och UL, med samma nyckel.
+4. **SL Transport-API** (ingen nyckel) – används där huset ligger i SL-område, för att namnge hållplatser/linjer exakt och upptäcka **anropsstyrd närtrafik som måste bokas i förväg**.
+5. **OpenStreetMap (Overpass)** – uppskattar avstånd till vatten och skog samt räknar byggnader inom 300 m (grannar). Ingen nyckel behövs.
+6. **Home Assistant-webhook** – skickar push med adress, pris och alla avstånd, med länk direkt till annonsen.
+
+### Vilket trafikbolag och hur många biljetter?
+
+Vilket biljettsystem som gäller avgörs av **länet**, inte av vilka bolagsnamn som råkar dyka upp i ett enskilt reseförslag:
+
+| Område | Kommuner | Trafikbolag |
+|---|---|---|
+| Stockholms län | bl.a. **Norrtälje**, Vallentuna, Österåker, Sigtuna | **SL** |
+| Uppsala län | Uppsala, Knivsta, Enköping, Tierp, Östhammar, Håbo, Heby, Älvkarleby | **UL** |
+
+Kartan finns i [src/lan.js](src/lan.js). Två biljetter flaggas **bara** när resan korsar länsgränsen – ett byte mellan SL-buss och pendeltåg är fortfarande en enda SL-biljett.
+
+### Matchningspoängen (0–100)
+
+Poängen är ett viktat snitt där **saknade mått viktas bort proportionellt** i stället för att nollas:
+
+| Faktor | Vikt | Full poäng vid |
+|---|---|---|
+| Natur (vatten/skog) | 40 % | på plats – `kravNatur` styr om det räcker med *något* eller krävs *båda* |
+| Avskildhet (grannar inom 300 m) | 30 % | 0 grannar |
+| Restid till Stockholm C | 12 % | 0 min |
+| Avstånd till hållplats | 10 % | 0 m |
+| Turtäthet | 8 % | 40 avgångar/vardag (≈ var 20:e minut) |
+
+Uträkningen sparas per hus (`matchning` i `data/traffar.json`) med varje faktors mätvärde, delpoäng, vikt och bidrag – det är den panelen visar under "Varför 72/100?". Ett hus där bussen måste förbeställas får noll på turtäthet, även om restiden råkar se bra ut.
+
+### Hur säker är kartnålen?
+
+Varje hus sparar `platsPrecision`: `hus` (husnummerträff), `gata` eller `ort`. En ortsnivåträff kan ligga kilometervis fel, och ritas därför som en streckad, ihålig nål i panelen. Hus utan verifierbar plats får **ingen** nål alls och visar "Plats okänd" – ärligare än en nål på fel ställe, eftersom allt som mäts därifrån (hållplats, natur, grannar, restid) annars också blir fel.
+
+Hus som sparades innan kommunkontrollen fanns rättas automatiskt: varje körning tar upp till 15 av dem, geokodar om och räknar om hela analysen från rätt plats – utan att skicka notis.
 
 Redan sedda annonser sparas i `data/seen.json` så att du bara får notis en gång per hus. Allra första körningen skickar inga notiser – den bara "nollställer" mot dagens utbud.
 
@@ -42,7 +75,8 @@ Kräver `BOOLI_CALLER_ID` + `BOOLI_PRIVATE_KEY`. Boolis publika API-sida är ned
 | Tjänst | Hur | Hemlighet(er) |
 |---|---|---|
 | **Datakälla** | Se avsnittet ovan – mejlbevakning (A) och/eller Booli-API (B). | `IMAP_USER`, `IMAP_PASSWORD` eller `BOOLI_CALLER_ID`, `BOOLI_PRIVATE_KEY` |
-| **Trafiklab** | Skapa gratiskonto på [developer.trafiklab.se](https://developer.trafiklab.se), skapa ett projekt och lägg till API:t **ResRobot v2.1**. | `RESROBOT_API_KEY` |
+| **Trafiklab** | Skapa gratiskonto på [developer.trafiklab.se](https://developer.trafiklab.se), skapa ett projekt och lägg till API:t **ResRobot v2.1**. Samma nyckel täcker både SL och UL – ingen separat UL-nyckel behövs. | `RESROBOT_API_KEY` |
+| **SL Transport** | Inget att göra – API:t är öppet och kräver ingen nyckel. | – |
 | **Home Assistant** | En webhook-automation i din HA som skickar vidare till mobilappen/apparna (se "Notiser till flera personer" nedan). | `HA_WEBHOOK_URL` |
 
 ### 2. Lägg in hemligheterna i GitHub
@@ -91,9 +125,15 @@ Gå till fliken **Actions** → välj **Testa Bostadsvakt** i vänsterspalten �
 
 - Utan några secrets alls: loggen visar natur-kollen och notisen som text.
 - Med `HA_WEBHOOK_URL` satt: du får en riktig push i mobilen inom någon minut. 📱
-- Med `RESROBOT_API_KEY` satt: hållplatskollen testas också.
+- Med `RESROBOT_API_KEY` satt: hållplats, turtäthet och restid testas också.
 
 Klicka på körningen i listan för att se loggen steg för steg.
+
+Samma workflow kör först **enhetstesterna**, som varken behöver nycklar eller internet. De täcker län-/biljettlogiken, geokodningens kommunspärr och matchningens uträkning:
+
+```
+npm test
+```
 
 ## Köra lokalt (för test)
 

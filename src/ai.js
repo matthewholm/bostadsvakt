@@ -9,7 +9,10 @@ export function harAnthropicNyckel() {
   return Boolean(process.env.ANTHROPIC_API_KEY);
 }
 
-export async function skrivBedomning({ adress, typ, fakta, pris, k, pendling, omgivning, poang, prisJmforelse }) {
+export async function skrivBedomning({
+  adress, typ, fakta, pris, k, pendling, omgivning, poang, prisJmforelse,
+  kommun, myndighet, matchning, turtathet,
+}) {
   if (!harAnthropicNyckel()) return null;
 
   const budgetKrav = [
@@ -26,12 +29,33 @@ export async function skrivBedomning({ adress, typ, fakta, pris, k, pendling, om
       `jämförbara hus i området (baserat på ${prisJmforelse.antalJamforelser} sålda hus).`
     : "";
 
+  // Läget är det viktigaste kontextet: en modell som bara ser "Norrtälje" i
+  // en adress gissar gärna fel om trafikbolag och biljetter. Här får den
+  // kommunen, länet och vilket bolag som faktiskt trafikerar området, och
+  // instrueras nedan att aldrig hitta på något utöver det.
+  const lagesrad = kommun
+    ? `Läge: ${kommun} kommun${myndighet ? `, ${myndighet.lan}, trafikeras av ${myndighet.namn}` : ""}.`
+    : "";
+
+  const turrad = turtathet
+    ? `Turtäthet från närmaste hållplats: ${turtathet.text}` +
+      (turtathet.forsta ? ` (första ${turtathet.forsta}, sista ${turtathet.sista})` : "") +
+      (turtathet.kraverBokning ? ". OBS: trafiken här är anropsstyrd och måste bokas i förväg." : ".")
+    : "";
+
+  const poangrad = matchning?.delar?.length
+    ? `Matchningspoäng ${poang}/100, uppdelat: ` +
+      matchning.delar.map((d) => `${d.namn} ${d.delpoang}/100 (väger ${Math.round(d.andelProcent)} %)`).join(", ") + "."
+    : poang != null ? `Matchningspoäng: ${poang}/100.` : "";
+
   const prompt = [
     `Hus: ${adress}${fakta ? ", " + fakta : ""}${pris ? `, pris ${pris.toLocaleString("sv-SE")} kr` : ""}.`,
+    lagesrad,
     pendling.length ? `Pendling: ${pendling.join(" · ")}.` : "",
+    turrad,
     omgivning.length ? `Omgivning: ${omgivning.join(" · ")}.` : "",
     prisrad,
-    poang != null ? `Matchningspoäng: ${poang}/100.` : "",
+    poangrad,
     `Krav att bedöma mot: max hållplatsavstånd ${k.maxAvståndHållplatsM} m, ` +
       `max vattenavstånd ${k.maxAvståndVattenM} m, max skogsavstånd ${k.maxAvståndSkogM} m, ` +
       `naturkrav "${k.kravNatur ?? "något"}", max grannar inom 300 m: ${k.maxGrannarInom300m}` +
@@ -58,7 +82,15 @@ export async function skrivBedomning({ adress, typ, fakta, pris, k, pendling, om
           "meddelandet. Var konkret och kortfattad – ingen hälsning, ingen rubrik, inga punktlistor. Du får " +
           "aldrig ställa följdfrågor eller be om mer information – meddelandet är allt du får, det finns ingen " +
           "mottagare som kan svara dig. Räcker informationen inte för en bedömning, säg det i en kort mening " +
-          "istället för att bedöma.",
+          "istället för att bedöma.\n\n" +
+          "VIKTIGT om kollektivtrafik och biljetter: skriv ALDRIG något om trafikbolag, biljetter eller " +
+          "zoner som inte redan står ordagrant i meddelandet. Gissa aldrig utifrån ortsnamnet. Norrtälje " +
+          "kommun ligger i Stockholms län och trafikeras av SL – inte UL. Uppsala län trafikeras av UL. " +
+          "Påstå bara att det krävs två biljetter om meddelandet uttryckligen säger att resan korsar en " +
+          "länsgräns. Står det att trafiken är anropsstyrd och måste bokas i förväg är det en viktig " +
+          "nackdel som bör nämnas.\n" +
+          "Om en uppdelning av matchningspoängen finns med: förklara kort vad som drar upp respektive ner " +
+          "poängen, istället för att bara upprepa siffran.",
         messages: [{ role: "user", content: prompt }],
       }),
     });
