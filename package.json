@@ -4,7 +4,8 @@
   "description": "Bevakar nya villor till salu nära pendling, vatten och skog – och skickar push-notiser via en Home Assistant-webhook.",
   "type": "module",
   "scripts": {
-    "start": "node --env-file-if-exists=.env src/index.js"
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "test": "node --test 'test/*.test.js'"
   },
   "engines": {
     "node": ">=22"

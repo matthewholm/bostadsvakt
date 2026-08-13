@@ -5,8 +5,6 @@
 // Kräver IMAP_USER + IMAP_PASSWORD (och IMAP_HOST om inte Gmail).
 import { geokoda } from "./geocode.js";
 
-const paus = (ms) => new Promise((r) => setTimeout(r, ms));
-
 export function harImap() {
   return Boolean(process.env.IMAP_USER && process.env.IMAP_PASSWORD);
 }
@@ -65,32 +63,39 @@ export async function hamtaMailAnnonser(areas = []) {
     await client.logout();
   }
 
-  // Slå upp koordinater (varsamt: Nominatim vill ha max 1 anrop/sek)
+  // Slå upp koordinater. geokoda() sköter både sin egen taktning mot
+  // Nominatim (max 1 anrop/sek) och ordningen mellan ortskandidater, och
+  // returnerar bara träffar där kommunen är verifierad – se geocode.js.
+  //
+  // Den gamla byggFragor() är borta med flit. Den skickade Hemnet-annonser
+  // helt utan ort att verifiera mot, och gav Booli-annonser en sista fråga
+  // utan ort som "sista chansen". Båda gjorde att första bästa träff i hela
+  // Sverige accepterades blint, vilket placerade Roslagen-hus i Uppsala och
+  // ett hus ända nere vid Trosa.
   for (const a of annonser.values()) {
     if (a.lat != null) continue;
-    for (const { fraga, ort } of byggFragor(a, areas)) {
-      const pos = await geokoda(fraga, ort);
-      await paus(1100);
-      if (pos) {
-        a.lat = pos.lat;
-        a.lon = pos.lon;
-        if (ort && !a.ort) a.ort = ort;
-        break;
-      }
+    if (!a.adress) continue;
+    // Snävast ledtråd först: annonsens kommun, sedan dess ort, sist de breda
+    // bevakningsområdena ur config.json.
+    const pos = await geokoda(a.gatuadress || a.adress, {
+      ort: a.ort,
+      // Annonsens egen kommun låser uppslaget till rätt kommun – de breda
+      // bevakningsområdena används bara när annonsen inte säger något.
+      kommunText: a.kommunText,
+      omraden: areas,
+    });
+    if (pos) {
+      a.lat = pos.lat;
+      a.lon = pos.lon;
+      a.kommun = pos.kommunNamn;
+      a.lan = pos.lan;
+      a.myndighet = pos.myndighet;
+      a.platsPrecision = pos.precision;
+      a.platsKalla = pos.kalla;
+      if (!a.ort) a.ort = pos.kommunNamn;
     }
   }
   return { annonser: [...annonser.values()], slutpriser };
-}
-
-// Geokodningsfrågor per annons. Hemnet bär adressen i sin slug; Booli ger
-// bara gatuadress, så vi provar den med varje bevakat område tillagt.
-function byggFragor(a, areas) {
-  if (a.adressFragor?.length) return a.adressFragor.map((fraga) => ({ fraga }));
-  if (a.adress && areas.length) {
-    return [...areas.map((ort) => ({ fraga: `${a.adress} ${ort}`, ort })), { fraga: a.adress }];
-  }
-  if (a.adress) return [{ fraga: a.adress }];
-  return [];
 }
 
 // Hittar Hemnet-/Booli-annonser i mejlets HTML. Parar ihop annons-id (ur
@@ -109,7 +114,8 @@ export function hittaAnnonser(html, plaintext = "") {
     rum: null,
     adress: null,
     ort: "",
-    adressFragor: null,
+    gatuadress: null,
+    kommunText: "",
     bild: null,
     pris: null,
     boarea: null,
@@ -227,12 +233,6 @@ export function tolkaHemnetSlug(slug) {
   const adress = [cap(gata.join(" ")), plats.map(cap).join(" ")].filter(Boolean).join(", ")
     || `${cap(typ) || "Bostad"} (adress saknas, hemnet-${id})`;
 
-  const adressFragor = [...new Set([
-    [...gata, ...plats].join(" "),
-    [...gata, kommunNamn].filter(Boolean).join(" "),
-    adressOrd.join(" "),
-  ])].filter(Boolean);
-
   return {
     id: `hemnet-${id}`,
     kalla: "Hemnet",
@@ -241,7 +241,13 @@ export function tolkaHemnetSlug(slug) {
     rum: rum ? Number(rum.replace("rum", "")) : null,
     adress,
     ort: plats.map(cap).join(" "),
-    adressFragor,
+    // Ren gatuadress utan ortsdelen – det är den som ska in i Nominatims
+    // `street`-fält. Skickas hela "Simpnäsvägen 13, Väddö Norrtälje" dit
+    // blir den strukturerade sökningen sämre, inte bättre.
+    gatuadress: cap(gata.join(" ")) || null,
+    // Sluggen stavar ut kommunen ("...-vaddo-norrtalje-kommun-...") – den
+    // starkaste ledtråden som fanns i datan hela tiden men aldrig användes.
+    kommunText: cap(kommunNamn),
     bild: null,
     pris: null, boarea: null, tomtarea: null, lat: null, lon: null,
   };
@@ -333,7 +339,13 @@ export function tolkaHemnetDigest(text) {
       rum,
       adress,
       ort: ort.split(",")[0].trim(),
-      adressFragor: [...new Set([`${adress} ${ort}`, adress])],
+      // Ortsraden ser ut som "Väddö, Norrtälje kommun". Kommunen efter kommat
+      // är den starkaste ledtråden vi har om var huset FAKTISKT ligger – den
+      // kastades tidigare bort, och utan den chansade geokodningen på
+      // bevakningsområdena ("Uppsala" först) med Roslagen-hus i Uppsala som
+      // följd. Nu binder den träffen till rätt kommun.
+      kommunText: ort.split(",").slice(1).join(",").trim(),
+      gatuadress: adress,
       bild: null,
       pris,
       boarea: Number(areaM[1].replace(/\s/g, "")),
