@@ -315,3 +315,94 @@ export async function turtathet(stopp, myndighet) {
 }
 
 export { SL_MYND, UL_MYND, myndighetForKommun };
+
+// ---- Bil till en hållplats som faktiskt går att pendla från ---------------
+
+// Hur långt det är rimligt att köra för att nå riktig kollektivtrafik. Längre
+// än så är det inte längre "pendla med buss", då kör man hela vägen.
+const MAX_BIL_MIN = 35;
+// Så många hållplatser orkar vi undersöka innan vi ger upp. Varje kandidat
+// kostar ett avgångsanrop, och det här körs bara för hus som behöver det.
+const MAX_KANDIDATER = 5;
+// Under så här många avgångar per vardag är hållplatsen inget alternativ
+// heller – då har vi bara flyttat problemet.
+const MIN_AVGANGAR = 6;
+
+/**
+ * Hittar närmaste hållplats man kan KÖRA till och faktiskt pendla vidare från.
+ *
+ * Anropas bara när hållplatsen vid huset kräver förbeställning eller saknar
+ * linjetrafik. Ett sådant hus är inte nödvändigtvis omöjligt att pendla från –
+ * de flesta i Roslagen kör bil till en riktig hållplats och ställer bilen där.
+ * Utan det här steget stod det bara "ingen trafik" och huset såg sämre ut än
+ * det är.
+ *
+ * Returnerar hållplatsen, körtiden dit, parkeringen och turtätheten därifrån.
+ */
+export async function bilTillHallplats(lat, lon, myndighet, uteslut = new Set()) {
+  if (!harResrobotNyckel()) return null;
+
+  let data;
+  try {
+    data = await resrobot("location.nearbystops", {
+      originCoordLat: String(lat), originCoordLong: String(lon), r: "30000", maxNo: "60",
+    });
+  } catch (err) {
+    console.warn(`  ResRobot (hållplatser för bilresa) misslyckades: ${err.message}`);
+    return null;
+  }
+  if (!data) return null;
+
+  const kandidater = somLista(data.stopLocationOrCoordLocation)
+    .map((x) => x.StopLocation)
+    .filter(Boolean)
+    .map((s) => ({
+      id: String(s.extId ?? s.id ?? ""),
+      namn: s.name,
+      avstand: Number(s.dist ?? 0),
+      produkter: Number(s.products ?? 0),
+      lat: Number(s.lat),
+      lon: Number(s.lon),
+    }))
+    .filter((s) => s.id && !uteslut.has(s.id) && Number.isFinite(s.lat))
+    // Tågstationer först – de är nästan alltid det riktiga pendlingsalternativet
+    // och har infartsparkering – därefter närmast.
+    .sort((a, b) => {
+      const at = a.produkter & TAG_PRODUKTER ? 0 : 1;
+      const bt = b.produkter & TAG_PRODUKTER ? 0 : 1;
+      return at !== bt ? at - bt : a.avstand - b.avstand;
+    })
+    .slice(0, MAX_KANDIDATER);
+
+  const { korTid, parkeringVid, parkeringstext } = await import("./bil.js");
+
+  for (const s of kandidater) {
+    const turer = await turtathet(s, myndighet);
+    // Har den för få turer, eller kräver den också förbokning, är den inget
+    // alternativ – då hade vi bara flyttat problemet en mil bort.
+    if (!turer || turer.kraverBokning || turer.antal < MIN_AVGANGAR) continue;
+
+    const bil = await korTid({ lat, lon }, { lat: s.lat, lon: s.lon });
+    if (bil.minuter > MAX_BIL_MIN) continue;
+
+    const parkering = await parkeringVid(s.lat, s.lon);
+    const resa = await resaTillStockholm(s.lat, s.lon, myndighet);
+
+    return {
+      hallplats: s.namn,
+      avstandM: s.avstand,
+      bilMin: bil.minuter,
+      bilKm: bil.km,
+      bilUppskattad: bil.uppskattad,
+      arTagstation: Boolean(s.produkter & TAG_PRODUKTER),
+      parkering,
+      parkeringstext: parkeringstext(parkering),
+      turtathet: { antal: turer.antal, klass: turer.klass, text: turer.text, forsta: turer.forsta, sista: turer.sista },
+      // Hela dörr-till-dörr-tiden, inte bara bussdelen. Det är den siffran man
+      // faktiskt jämför hus med.
+      totaltTillStockholmMin: resa ? bil.minuter + resa.restidMin : null,
+      restidFranHallplatsMin: resa?.restidMin ?? null,
+    };
+  }
+  return null;
+}

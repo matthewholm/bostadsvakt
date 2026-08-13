@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { harBooliNycklar, sokAnnonser } from "./booli.js";
 import { harImap, hamtaMailAnnonser } from "./mailsource.js";
-import { narmasteHallplatser, resaTillStockholm, resaTillAndraMalet, turtathet, harResrobotNyckel } from "./transit.js";
+import { narmasteHallplatser, resaTillStockholm, resaTillAndraMalet, turtathet, bilTillHallplats, harResrobotNyckel } from "./transit.js";
 import { geokoda, slaUppPlats } from "./geocode.js";
 import { myndighetForKommun, visaKommun } from "./lan.js";
 import { naturInfo } from "./nature.js";
@@ -176,6 +176,7 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
   const matt = {};
   let uppfyller = true;
   let turer = null; // turtäthet från närmaste hållplats, se nedan
+  let bilAlternativ = null; // bil till en hållplats som går att pendla från
 
   // Vilken kommun – och därmed vilket trafikbolag/biljettsystem – gäller här?
   // Mejlkällan har normalt redan verifierat kommunen vid geokodningen. Booli-
@@ -219,6 +220,36 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
         pendling.push(`Turtäthet: ${turer.text}${spann}`);
         matt.turtathetAvgangar = turer.antal;
         for (const text of turer.bokning) pendling.push(`⚠ ${text}`);
+
+        // Går det inte att pendla från dörren – anropsstyrd trafik eller ingen
+        // trafik alls – betyder det inte att huset är omöjligt. De flesta här
+        // kör bil till en riktig hållplats och ställer bilen där. Utan det här
+        // steget stod det bara "ingen trafik" och huset såg sämre ut än det är.
+        if (turer.kraverBokning || turer.antal < 6) {
+          bilAlternativ = await bilTillHallplats(a.lat, a.lon, myndighet, new Set([h.narmaste.id]));
+          if (bilAlternativ) {
+            const b = bilAlternativ;
+            const cirka = b.bilUppskattad ? "ca " : "";
+            pendling.push(
+              `Bil till ${b.hallplats}: ${cirka}${b.bilMin} min (${b.bilKm} km)` +
+                (b.arTagstation ? " · tågstation" : "")
+            );
+            if (b.parkeringstext) pendling.push(`Parkering: ${b.parkeringstext}`);
+            else pendling.push("Parkering: ingen hittad i OpenStreetMap vid hållplatsen");
+            pendling.push(`Därifrån: ${b.turtathet.text}`);
+            if (b.totaltTillStockholmMin != null) {
+              pendling.push(`Totalt till Stockholm C med bil + kollektivt: ca ${fmtTid(b.totaltTillStockholmMin)}`);
+            }
+            // Poängen ska spegla hur man FAKTISKT skulle pendla. Turtätheten
+            // räknas därför på hållplatsen man kör till, inte på den vid dörren
+            // som ingen kan använda – men körtiden kostar, se score.js.
+            matt.turtathetAvgangar = b.turtathet.antal;
+            matt.bilTillHallplatsMin = b.bilMin;
+            if (b.totaltTillStockholmMin != null) matt.restidMin = b.totaltTillStockholmMin;
+          } else {
+            pendling.push("⚠ Hittade ingen hållplats inom rimligt bilavstånd med regelbunden trafik");
+          }
+        }
       }
     } else if (h) {
       pendling.push("Ingen hållplats inom 3 km");
@@ -380,6 +411,9 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
           forsta: turer.forsta, sista: turer.sista,
           kraverBokning: turer.kraverBokning, bokning: turer.bokning }
       : null,
+    // Bil till en hållplats som går att pendla från, när den vid dörren inte
+    // duger. Null för de allra flesta hus – det här är undantagsfallet.
+    bilTillHallplats: bilAlternativ,
     pendling,
     omgivning,
     uppfyller,

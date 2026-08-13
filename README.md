@@ -42,6 +42,29 @@ Poängen är ett viktat snitt där **saknade mått viktas bort proportionellt** 
 
 Uträkningen sparas per hus (`matchning` i `data/traffar.json`) med varje faktors mätvärde, delpoäng, vikt och bidrag – det är den panelen visar under "Varför 72/100?". Ett hus där bussen måste förbeställas får noll på turtäthet, även om restiden råkar se bra ut.
 
+### När bussen måste förbeställas
+
+I Roslagens och Uppsalas ytterområden är närmaste "hållplats" ofta bara en punkt
+som trafikeras av anropsstyrd trafik – man ringer och beställer timmar i förväg.
+Ett sådant hus såg tidigare ut att ha bra pendling ("Hållplats: X · 400 m") fast
+det i praktiken inte gick att pendla därifrån.
+
+Men det gör det ofta ändå, med bil till en riktig hållplats. När trafiken vid
+dörren kräver förbokning eller har färre än sex avgångar per vardag letar
+bevakningen därför upp närmaste hållplats man kan **köra** till och faktiskt
+pendla vidare från, och redovisar:
+
+- körtid och vägsträcka dit ([OSRM](https://project-osrm.org), gratis och utan nyckel)
+- parkeringen vid hållplatsen, med tonvikt på om den kostar något – `park_ride`
+  och `fee` ur OpenStreetMap. Saknas `fee` står det *avgift okänd* i stället för
+  att lova gratis
+- turtätheten därifrån
+- hela restiden dörr till dörr: bil + kollektivt
+
+Matchningen räknas då på den hållplats man faktiskt kliver på, men varje kvart
+bakom ratten drar av en tiondel av turtäthetspoängen. Avdraget bottnar vid 40 % –
+att köra dit är ett fungerande alternativ, inte samma sak som ingen trafik alls.
+
 ### Hur säker är kartnålen?
 
 Varje hus sparar `platsPrecision`: `hus` (husnummerträff), `gata` eller `ort`. En ortsnivåträff kan ligga kilometervis fel, och ritas därför som en streckad, ihålig nål i panelen. Hus utan verifierbar plats får **ingen** nål alls och visar "Plats okänd" – ärligare än en nål på fel ställe, eftersom allt som mäts därifrån (hållplats, natur, grannar, restid) annars också blir fel.

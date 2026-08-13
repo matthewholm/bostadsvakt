@@ -302,3 +302,66 @@ test("utan känd kommun får de breda bevakningsområdena användas", async () =
     aterstall();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Bil till hållplatsen
+//
+// För hus där enda trafiken är anropsstyrd är frågan inte "finns en hållplats"
+// utan "hur tar jag mig härifrån på riktigt". Poängen ska då spegla den
+// hållplats man faktiskt kliver på – men att köra dit kostar tid, och det får
+// inte försvinna i en siffra som ser lika bra ut som gångavstånd.
+// ---------------------------------------------------------------------------
+
+import { parkeringstext } from "../src/bil.js";
+
+test("bil till hållplatsen ger poäng, men mindre än samma trafik vid dörren", () => {
+  const matt = { hallplatsAvstand: 900, vattenM: 500, skogM: 200, grannar: 10 };
+  const viddorren = beraknaMatchning(kriterier, { ...matt, turtathetAvgangar: 30 });
+  const medBil = beraknaMatchning(kriterier, { ...matt, turtathetAvgangar: 30, bilTillHallplatsMin: 15 });
+  const ingenTrafik = beraknaMatchning(kriterier, { ...matt, turtathetAvgangar: 0 });
+
+  assert.ok(medBil.poang < viddorren.poang, "körtiden ska kosta något");
+  assert.ok(medBil.poang > ingenTrafik.poang, "bil dit är bättre än ingen trafik alls");
+});
+
+test("längre bilresa ger lägre poäng, men aldrig under 40 % av trafiken", () => {
+  const matt = { hallplatsAvstand: 900, turtathetAvgangar: 40, vattenM: 500, skogM: 200, grannar: 10 };
+  const del = (min) => beraknaMatchning(kriterier, { ...matt, bilTillHallplatsMin: min })
+    .delar.find((d) => d.nyckel === "turtathet").delpoang;
+
+  assert.ok(del(5) > del(20), "fem minuter ska slå tjugo");
+  assert.ok(del(20) > del(35), "tjugo ska slå trettiofem");
+  // Golvet finns för att bil till pendeltåget är ett fungerande sätt att
+  // pendla – inte likvärdigt med gångavstånd, men inte heller "ingen trafik".
+  assert.ok(del(35) >= 40, `${del(35)} borde inte falla under golvet 40`);
+});
+
+test("faktorn heter något annat när man måste köra dit", () => {
+  const matt = { hallplatsAvstand: 900, turtathetAvgangar: 20, vattenM: 500, skogM: 200, grannar: 10 };
+  const utan = beraknaMatchning(kriterier, matt).delar.find((d) => d.nyckel === "turtathet");
+  const med = beraknaMatchning(kriterier, { ...matt, bilTillHallplatsMin: 12 })
+    .delar.find((d) => d.nyckel === "turtathet");
+
+  assert.equal(utan.namn, "Turtäthet");
+  assert.equal(med.namn, "Turtäthet (via bil)");
+  // Förklaringen ska säga att siffran gäller en hållplats man kör till, annars
+  // ser den ut som om bussen gick utanför dörren.
+  assert.match(med.text, /kör till/);
+  assert.match(med.text, /12 min bil/);
+});
+
+test("parkeringstexten säger 'avgift okänd' istället för att gissa gratis", () => {
+  // OSM saknar ofta fee-taggen på landsbygden. I praktiken är den nästan alltid
+  // gratis – men nästan är inte samma sak som är, och det är användarens pengar.
+  assert.match(parkeringstext({ namn: "P", avstand: 50, gratis: null }), /avgift okänd/);
+  assert.match(parkeringstext({ namn: "P", avstand: 50, gratis: true }), /gratis/);
+  assert.match(parkeringstext({ namn: "P", avstand: 50, gratis: false }), /avgift/);
+  assert.equal(parkeringstext(null), null);
+});
+
+test("infartsparkering lyfts fram framför ett generiskt parkeringsnamn", () => {
+  const t = parkeringstext({ namn: "Parkering", avstand: 80, gratis: true, infartsparkering: true, platser: 40 });
+  assert.match(t, /Infartsparkering/);
+  assert.match(t, /40 platser/);
+  assert.match(t, /80 m från hållplatsen/);
+});

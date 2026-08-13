@@ -51,7 +51,7 @@ out tags center;`;
   };
 }
 
-async function fragaOverpass(query) {
+export async function fragaOverpass(query) {
   for (const url of OVERPASS_SPEGLAR) {
     try {
       const res = await fetch(url, {
@@ -68,11 +68,11 @@ async function fragaOverpass(query) {
       console.warn(`  Overpass (${new URL(url).host}) misslyckades: ${err.message}`);
     }
   }
-  console.warn("  Alla Overpass-speglar misslyckades – hoppar över natur-koll.");
+  console.warn("  Alla Overpass-speglar misslyckades.");
   return null;
 }
 
-function haversine(lat1, lon1, lat2, lon2) {
+export function haversine(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const rad = (g) => (g * Math.PI) / 180;
   const dLat = rad(lat2 - lat1);

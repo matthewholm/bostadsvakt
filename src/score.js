@@ -23,7 +23,7 @@ const rund = (n) => Math.round(n * 10) / 10;
 const nummer = (n) => Number(n).toLocaleString("sv-SE");
 
 export function beraknaMatchning(k, matt = {}) {
-  const { hallplatsAvstand, restidMin, turtathetAvgangar, vattenM, skogM, grannar } = matt;
+  const { hallplatsAvstand, restidMin, turtathetAvgangar, bilTillHallplatsMin, vattenM, skogM, grannar } = matt;
 
   // ---- Pendling (30 %) ----
   const pendlingsDelar = [
@@ -53,7 +53,7 @@ export function beraknaMatchning(k, matt = {}) {
     },
     {
       nyckel: "turtathet",
-      namn: "Turtäthet",
+      namn: bilTillHallplatsMin != null ? "Turtäthet (via bil)" : "Turtäthet",
       vikt: 8,
       varde: turtathetAvgangar,
       enhet: "avgångar/vardag",
@@ -61,9 +61,21 @@ export function beraknaMatchning(k, matt = {}) {
       // 40 avgångar/vardag ≈ var 20:e minut = full poäng. Noll avgångar ger
       // noll – ett hus där bussen måste förbeställas ska inte kunna få samma
       // pendlingspoäng som ett hus med kvartstrafik.
-      delpoang: turtathetAvgangar == null ? null : Math.max(0, Math.min(100, (turtathetAvgangar / 40) * 100)),
+      //
+      // Måste man ta bilen till hållplatsen räknas turtätheten där man faktiskt
+      // kliver på, men varje kvart bakom ratten drar av en tiondel. Annars
+      // skulle ett hus tre mil från pendeltåget få samma poäng som grannen med
+      // stationen på gångavstånd. Avdraget bottnar vid 40 %: att köra dit är
+      // trots allt ett fungerande alternativ, inte samma sak som ingen trafik.
+      delpoang: turtathetAvgangar == null
+        ? null
+        : Math.max(0, Math.min(100, (turtathetAvgangar / 40) * 100)) *
+          (bilTillHallplatsMin != null ? Math.max(0.4, 1 - bilTillHallplatsMin / 150) : 1),
       text: turtathetAvgangar != null
-        ? `${nummer(turtathetAvgangar)} avgångar en vanlig vardag (40 = full poäng)`
+        ? bilTillHallplatsMin != null
+          ? `${nummer(turtathetAvgangar)} avgångar en vanlig vardag från hållplatsen man kör till, ` +
+            `${nummer(bilTillHallplatsMin)} min bil bort (40 avgångar utan bil = full poäng)`
+          : `${nummer(turtathetAvgangar)} avgångar en vanlig vardag (40 = full poäng)`
         : null,
     },
   ];
