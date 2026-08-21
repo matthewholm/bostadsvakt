@@ -398,6 +398,29 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
       ? { fran: tidigareHus.pris, till: a.pris, tidpunkt: new Date().toISOString() }
       : (tidigareHus?.prisSankning ?? null);
 
+  /**
+   * Rubricerade radgrupper, i den generiska form varje yta som visar husen
+   * kan rendera utan att veta vad grupperna heter eller hur många det finns.
+   *
+   * Innan den här fanns var pendling/omgivning/ekonomi tre separata fält, och
+   * varje ny grupp bostadsvakt ville visa krävde en matchande kod- och
+   * driftsättningsomgång i den yta som visade husen – en Alva-ändring för
+   * varje ny bostadsvakt-idé, även när Alva bara skulle skriva ut texten rakt
+   * av. Nu är det en lista av {titel, rader}, och en yta som en gång skrivit
+   * "loopa över sektioner, skriv ut titel och rader" är klar för alla
+   * framtida grupper – nya eller omdöpta sektioner är en ändring här, aldrig
+   * där husen visas.
+   *
+   * pendling/omgivning finns kvar som egna fält också (bostadsvakt-panel
+   * läser dem direkt och ska inte behöva följa med i den här omläggningen).
+   */
+  const grupp = (titel, rader) => (rader.length ? { titel, rader } : null);
+  const sektioner = [
+    grupp("PENDLING", pendling),
+    grupp("OMGIVNING", omgivning),
+    grupp("EKONOMI", ekonomiRader),
+  ].filter(Boolean);
+
   // Spara ALLA hus till flödet (Bostäder), behåll ev. panel-flaggor.
   // typ sparas tomt (inte "Bostad"-platshållaren) när hustypen är okänd –
   // annars tolkar hårdfiltret/städningen nedan "Bostad" som en riktig,
@@ -425,13 +448,10 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
     byggar: berikning.byggar,
     // Hela uträkningen, för den dag en yta vill visa den strukturerat...
     ekonomi: ekonomi.verdikt !== "okant" ? ekonomi : null,
-    // ...och samma färdigformaterade rader som notisen använder, i samma
-    // form som pendling/omgivning redan har. Alva slår redan ihop de två till
-    // en enda lista och skriver ut varje rad – lägga till den här listan i den
-    // sammanslagningen är hela ändringen som behövs där. Nya eller omskrivna
-    // rader från en framtida push hit dyker sedan upp i Alva utan att någon
-    // rör Alva-koden igen.
+    // ...och samma rader, grupperade under en rubrik, i sektioner nedan –
+    // det är den listan en yta faktiskt bör rendera.
     ekonomiRader,
+    sektioner,
     aiOmdome,
     url: a.url,
     bild: a.bild ?? null,
