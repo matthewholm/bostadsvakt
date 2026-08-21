@@ -10,6 +10,11 @@ import { verifiera } from "../src/geocode.js";
 import { myndighetForKommun, myndighetForOrt, kommunForOrt, biljettrad, visaKommun, SL, UL } from "../src/lan.js";
 import { beraknaMatchning } from "../src/score.js";
 import { turtathetPoang } from "../src/transit.js";
+import {
+  beraknaLagfart, beraknaPantbrev, amorteringsprocent, driftskostnadManad,
+  totalkostnad, levnadsomkostnad, kalp, saljaNuvarandeBostad, harRad,
+} from "../src/ekonomi.js";
+import { arBooliAnnons, tolkaBooliannons } from "../src/annonsberikning.js";
 
 // ---------------------------------------------------------------------------
 // Län och trafikbolag
@@ -364,4 +369,186 @@ test("infartsparkering lyfts fram framför ett generiskt parkeringsnamn", () => 
   assert.match(t, /Infartsparkering/);
   assert.match(t, /40 platser/);
   assert.match(t, /80 m från hållplatsen/);
+});
+
+// ---------------------------------------------------------------------------
+// Ekonomi – lagfart, pantbrev, amorteringskrav, KALP och har-vi-råd
+//
+// Lagfarts- och pantbrevsexemplen är samma räkneexempel källorna själva ger
+// (3 000 000 kr köp → 45 825 kr, 1 000 000 kr nytt pantbrev → 20 375 kr),
+// så testet dubbelkollar formeln mot en känd facit, inte bara mot sig självt.
+// ---------------------------------------------------------------------------
+
+test("lagfart är 1,5 % av köpeskillingen plus 825 kr expeditionsavgift", () => {
+  const l = beraknaLagfart(3_000_000);
+  assert.equal(l.stampelskatt, 45_000);
+  assert.equal(l.expedition, 825);
+  assert.equal(l.total, 45_825);
+});
+
+test("lagfart utan känt pris ger null istället för att gissa", () => {
+  assert.equal(beraknaLagfart(null), null);
+  assert.equal(beraknaLagfart(0), null);
+});
+
+test("pantbrev är 2 % av beloppet plus 375 kr expeditionsavgift", () => {
+  const p = beraknaPantbrev(1_000_000);
+  assert.equal(p.stampelskatt, 20_000);
+  assert.equal(p.expedition, 375);
+  assert.equal(p.total, 20_375);
+});
+
+test("inget lån kräver inget nytt pantbrev", () => {
+  assert.deepEqual(beraknaPantbrev(0), { stampelskatt: 0, expedition: 0, total: 0 });
+  assert.deepEqual(beraknaPantbrev(null), { stampelskatt: 0, expedition: 0, total: 0 });
+});
+
+test("amorteringskravet efter reformen 2026-04-01: 2/1/0 % på belåningsgradstrappan", () => {
+  // Exakt på gränserna: >70 % ger 2, 50–70 % ger 1, ==50 % ger redan 0.
+  assert.equal(amorteringsprocent(0.71), 2);
+  assert.equal(amorteringsprocent(0.70), 1, "exakt 70 % ska ännu inte ge 2 %");
+  assert.equal(amorteringsprocent(0.51), 1);
+  assert.equal(amorteringsprocent(0.50), 0, "exakt 50 % ska inte kräva amortering");
+  assert.equal(amorteringsprocent(0.30), 0);
+});
+
+test("driftskostnad från annonsen vinner alltid över schablonen", () => {
+  const kand = driftskostnadManad({ kandKrManad: 5872, boarea: 105 });
+  assert.equal(kand.kr, 5872);
+  assert.equal(kand.kalla, "annons");
+
+  const gissad = driftskostnadManad({ kandKrManad: null, boarea: 120, schablonKvmAr: 400 });
+  assert.equal(gissad.kr, Math.round((120 * 400) / 12));
+  assert.equal(gissad.kalla, "schablon");
+});
+
+test("driftskostnad utan boarea och utan känt värde ger null, inte en gissning ur luften", () => {
+  assert.equal(driftskostnadManad({ kandKrManad: null, boarea: null }), null);
+});
+
+test("totalkostnad slår ihop ränta, amortering och drift till en månadskostnad, idag och stresstestat", () => {
+  const t = totalkostnad({
+    pris: 3_000_000,
+    kontantinsats: 450_000, // 15 % kontantinsats → 85 % belåning → 2 % amortering
+    boarea: 100,
+    driftskostnadKandKrManad: 3000,
+    hushall: { antagande: { ranta: 4, kalkylranta: 8, driftskostnadKvmAr: 400 } },
+  });
+  assert.equal(t.lan, 2_550_000);
+  assert.equal(t.belaningsgradProcent, 85);
+  assert.equal(t.amorteringsprocent, 2);
+  assert.equal(t.drift.kalla, "annons");
+  assert.equal(t.manad.drift, 3000);
+  assert.equal(t.manad.total, t.manad.ranta + t.manad.amortering + t.manad.drift);
+  assert.equal(t.manadStress.total, t.manadStress.ranta + t.manadStress.amortering + t.manadStress.drift);
+  assert.ok(t.manadStress.total > t.manad.total, "stresstestad kostnad ska vara högre än dagens");
+  assert.equal(t.engangskostnad, t.lagfart.total + t.pantbrev.total);
+});
+
+test("levnadsomkostnad räknar Konsumentverkets 2026-belopp per vuxen och barnets ålder", () => {
+  assert.equal(levnadsomkostnad({ vuxna: 2, barnAldrar: [] }), 2 * (3600 + 700 + 850 + 700 + 450));
+  const medBarn = levnadsomkostnad({ vuxna: 2, barnAldrar: [5, 12] });
+  assert.equal(medBarn, 2 * (3600 + 700 + 850 + 700 + 450) + 2000 + 3000);
+});
+
+test("KALP utan känd inkomst ger null, inte en falsk marginal", () => {
+  assert.equal(kalp({ nettoinkomstManad: null, boendekostnadManad: 20_000 }), null);
+});
+
+test("KALP räknar kvar-att-leva-på rakt av", () => {
+  const k = kalp({
+    nettoinkomstManad: 45_000,
+    boendekostnadManad: 20_000,
+    ovrigaLanManad: 2_000,
+    hushall: { vuxna: 2, barnAldrar: [] },
+  });
+  assert.equal(k.levnadsomkostnad, 2 * (3600 + 700 + 850 + 700 + 450));
+  assert.equal(k.kvarAttLevaPa, 45_000 - 20_000 - 2_000 - k.levnadsomkostnad);
+});
+
+test("nettolikvid vid försäljning drar av kvarstående lån och mäklarkostnad", () => {
+  const s = saljaNuvarandeBostad({ varde: 4_000_000, kvarstaendeLan: 1_500_000, maklarkostnadProcent: 3 });
+  assert.equal(s.maklarkostnad, 120_000);
+  assert.equal(s.nettoLikvid, 4_000_000 - 1_500_000 - 120_000);
+});
+
+test("nettolikvid kan aldrig bli negativ – ett hus värt mindre än lånet ger 0, inte minus", () => {
+  const s = saljaNuvarandeBostad({ varde: 1_000_000, kvarstaendeLan: 1_500_000, maklarkostnadProcent: 3 });
+  assert.equal(s.nettoLikvid, 0);
+});
+
+test("har-råd-bedömningen är 'okänt', inte ett gissat nej, när hushållsekonomin inte är ifylld", () => {
+  const r = harRad({ pris: 3_000_000, boarea: 100, hushall: {} });
+  assert.equal(r.verdikt, "okant");
+  assert.match(r.forklaring, /inte ifylld/);
+});
+
+test("ett hushåll med god marginal får verdikt 'ja' med en läsbar förklaring", () => {
+  const r = harRad({
+    pris: 2_000_000,
+    boarea: 90,
+    driftskostnadKandKrManad: 2000,
+    hushall: {
+      nettoinkomstManad: 60_000,
+      kontantinsatsTillgangligt: 1_000_000,
+      vuxna: 2,
+      barnAldrar: [],
+      antagande: { ranta: 3.2, kalkylranta: 6 },
+    },
+  });
+  assert.equal(r.verdikt, "ja");
+  assert.match(r.forklaring, /kvar per månad/);
+});
+
+test("ett hushåll med underskott vid stresstestad ränta får verdikt 'nej'", () => {
+  const r = harRad({
+    pris: 6_000_000,
+    boarea: 150,
+    driftskostnadKandKrManad: 6000,
+    hushall: {
+      nettoinkomstManad: 35_000,
+      kontantinsatsTillgangligt: 300_000,
+      vuxna: 2,
+      barnAldrar: [4, 7],
+      antagande: { ranta: 3.2, kalkylranta: 8 },
+    },
+  });
+  assert.equal(r.verdikt, "nej");
+  assert.match(r.forklaring, /underskott/);
+});
+
+// ---------------------------------------------------------------------------
+// Berikning från Boolis annonssida
+//
+// HTML-utdraget nedan är den verkliga strukturen Boolis annonssida bäddar in
+// (verifierat mot en riktig annons, se annonsberikning.js) – inte påhittad
+// markup, för ett test mot fantasi-HTML bevisar bara att regexen matchar sig
+// själv.
+// ---------------------------------------------------------------------------
+
+const EXEMPEL_HTML =
+  '{"__typename":"KeyPoint","key":"constructionYear","label":"Byggår","value":{"__typename":"DisplayText","plainText":"1962","markdown":"**1962**"}}' +
+  '{"__typename":"InfoPoint","key":"operatingCost","displayText":{"__typename":"DisplayText","markdown":"Driftskostnaden är **5 872** kr/mån"}}';
+
+test("tolkar byggår och driftskostnad ur Boolis inbäddade annonsdata", () => {
+  const r = tolkaBooliannons(EXEMPEL_HTML);
+  assert.equal(r.byggar, 1962);
+  assert.equal(r.driftskostnadManad, 5872);
+});
+
+test("driftskostnad angiven per år räknas om till per månad", () => {
+  const html = '{"key":"operatingCost","displayText":{"markdown":"Driftskostnaden är **60 000** kr/år"}}';
+  assert.equal(tolkaBooliannons(html).driftskostnadManad, 5000);
+});
+
+test("saknas fälten helt blir svaret null, inte ett fel", () => {
+  const r = tolkaBooliannons("<html>en annons utan inbäddad data</html>");
+  assert.equal(r.byggar, null);
+  assert.equal(r.driftskostnadManad, null);
+});
+
+test("bara Booli-annonser (booli.se-url) plockas ut för berikning, aldrig Hemnet", () => {
+  assert.equal(arBooliAnnons({ id: "booli-123", url: "https://www.booli.se/annons/123" }), true);
+  assert.equal(arBooliAnnons({ id: "hemnet-456", url: "https://www.hemnet.se/bostad/456" }), false);
+  assert.equal(arBooliAnnons({ id: "booli-123", url: null }), false, "ett booli-id utan url ska inte hämtas");
 });

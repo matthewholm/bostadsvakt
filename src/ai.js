@@ -11,7 +11,7 @@ export function harAnthropicNyckel() {
 
 export async function skrivBedomning({
   adress, typ, fakta, pris, k, pendling, omgivning, poang, prisJmforelse,
-  kommun, myndighet, matchning, turtathet,
+  kommun, myndighet, matchning, turtathet, ekonomi,
 }) {
   if (!harAnthropicNyckel()) return null;
 
@@ -48,6 +48,16 @@ export async function skrivBedomning({
       matchning.delar.map((d) => `${d.namn} ${d.delpoang}/100 (väger ${Math.round(d.andelProcent)} %)`).join(", ") + "."
     : poang != null ? `Matchningspoäng: ${poang}/100.` : "";
 
+  // Bara med när hushall är ifyllt (ekonomi.verdikt är då "ja"/"nej", annars
+  // "okant" och den här raden hoppas över) – annars finns inget för AI:n att
+  // säga om ekonomin, och den ska inte uppmanas gissa.
+  const ekonomirad = ekonomi && ekonomi.verdikt !== "okant"
+    ? `Ekonomi: lån ${ekonomi.lan.toLocaleString("sv-SE")} kr (${ekonomi.belaningsgradProcent}% belåning), ` +
+      `månadskostnad ca ${ekonomi.manad.total.toLocaleString("sv-SE")} kr idag och ` +
+      `${ekonomi.manadStress.total.toLocaleString("sv-SE")} kr stresstestat (${ekonomi.antaganden.kalkylranta}% ränta). ` +
+      `${ekonomi.verdikt === "ja" ? "Har råd" : "Har troligen inte råd"}: ${ekonomi.forklaring}`
+    : "";
+
   const prompt = [
     `Hus: ${adress}${fakta ? ", " + fakta : ""}${pris ? `, pris ${pris.toLocaleString("sv-SE")} kr` : ""}.`,
     lagesrad,
@@ -55,6 +65,7 @@ export async function skrivBedomning({
     turrad,
     omgivning.length ? `Omgivning: ${omgivning.join(" · ")}.` : "",
     prisrad,
+    ekonomirad,
     poangrad,
     `Krav att bedöma mot: max hållplatsavstånd ${k.maxAvståndHållplatsM} m, ` +
       `max vattenavstånd ${k.maxAvståndVattenM} m, max skogsavstånd ${k.maxAvståndSkogM} m, ` +
@@ -75,9 +86,9 @@ export async function skrivBedomning({
         model: MODEL,
         max_tokens: 200,
         system:
-          "Du är en kunnig lokalkännare som bedömer villor åt ett par som letar hus nära Uppsala/Norrtälje " +
-          "utifrån pendling, natur, avskildhet och – när det finns data om det – om priset är bra jämfört med " +
-          "nyligen sålda hus i området. Skriv EXAKT 2-3 meningar på svenska: vad som är bra, vad som är den " +
+          "Du är en kunnig lokalkännare som bedömer villor åt ett hushåll som letar hus " +
+          "utifrån pendling, natur, avskildhet, om priset är bra jämfört med nyligen sålda hus i området, och – " +
+          "när en ekonomirad finns med – om hushållet faktiskt har råd. Skriv EXAKT 2-3 meningar på svenska: vad som är bra, vad som är den " +
           "svaga länken (om någon), och en ärlig helhetsbild. Nämn prisläget bara om prisdata finns i " +
           "meddelandet. Var konkret och kortfattad – ingen hälsning, ingen rubrik, inga punktlistor. Du får " +
           "aldrig ställa följdfrågor eller be om mer information – meddelandet är allt du får, det finns ingen " +
@@ -90,7 +101,10 @@ export async function skrivBedomning({
           "länsgräns. Står det att trafiken är anropsstyrd och måste bokas i förväg är det en viktig " +
           "nackdel som bör nämnas.\n" +
           "Om en uppdelning av matchningspoängen finns med: förklara kort vad som drar upp respektive ner " +
-          "poängen, istället för att bara upprepa siffran.",
+          "poängen, istället för att bara upprepa siffran.\n\n" +
+          "VIKTIGT om ekonomi: nämn bara har-råd-bedömningen om en Ekonomi-rad faktiskt finns i meddelandet. " +
+          "Hitta aldrig på lånebelopp, månadskostnad eller en har-råd-slutsats när raden saknas – säg då " +
+          "ingenting om ekonomin. Räkna aldrig om siffrorna själv, upprepa bara vad som redan står.",
         messages: [{ role: "user", content: prompt }],
       }),
     });

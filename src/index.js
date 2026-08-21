@@ -14,6 +14,8 @@ import { lasTraffar, sparaTraffar } from "./matches.js";
 import { beraknaMatchning } from "./score.js";
 import { skrivBedomning } from "./ai.js";
 import { lasSlutpriser, sparaSlutpriser, jamforPris } from "./slutpriser.js";
+import { berikaFranBooli, arBooliAnnons } from "./annonsberikning.js";
+import { harRad } from "./ekonomi.js";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const k = config.kriterier;
@@ -342,6 +344,32 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
       ]
     : [];
 
+  // Driftskostnad och byggår finns aldrig i bevakningsmejlen – bara på
+  // Boolis egen annonssida. Anropas för alla hus (funktionen avgör själv om
+  // det är en Booli-annons); en paus efteråt bara när ett anrop faktiskt
+  // gjordes, av samma artighetsskäl som paus(1500) efter Overpass nedan.
+  const berikning = await berikaFranBooli(a);
+  if (arBooliAnnons(a)) await paus(800);
+
+  // Har hushållet råd? "okänt" (inte ett gissat nej) tills hushall är ifyllt
+  // i config.json – se ekonomi.js. Räknas på alla hus, oavsett läge, eftersom
+  // den bara behöver pris och boarea.
+  const ekonomi = harRad({
+    pris: a.pris,
+    boarea: a.boarea,
+    driftskostnadKandKrManad: berikning.driftskostnadManad,
+    hushall: config.hushall,
+  });
+  const ekonomiRader =
+    ekonomi.verdikt !== "okant"
+      ? [
+          `Lån: ${ekonomi.lan.toLocaleString("sv-SE")} kr (${ekonomi.belaningsgradProcent}% belåningsgrad, ${ekonomi.amorteringsprocent}% amortering/år)`,
+          `Engångskostnad: ${ekonomi.engangskostnad.toLocaleString("sv-SE")} kr (lagfart + pantbrev)`,
+          `Månadskostnad: ca ${ekonomi.manad.total.toLocaleString("sv-SE")} kr idag, ca ${ekonomi.manadStress.total.toLocaleString("sv-SE")} kr stresstestat (${ekonomi.antaganden.kalkylranta}% ränta)`,
+          ekonomi.verdikt === "ja" ? `✓ Har råd: ${ekonomi.forklaring}` : `⚠ Har troligen inte råd: ${ekonomi.forklaring}`,
+        ]
+      : [];
+
   const pris = a.pris ? `${a.pris.toLocaleString("sv-SE")} kr` : "";
   const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
   const fakta = [typNamn, a.rum && `${a.rum} rum`, a.boarea && `${a.boarea} m²`, a.tomtarea && `tomt ${a.tomtarea} m²`]
@@ -357,7 +385,7 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
         // AI:n får numera kommun/län, biljettläget och poängens uppdelning.
         // Utan det upprepade den bara pendlingsraderna – och när de sa
         // "UL + SJ" för ett hus i Norrtälje skrev den vidare det felet.
-        kommun: kommunNamn, myndighet, matchning, turtathet: turer,
+        kommun: kommunNamn, myndighet, matchning, turtathet: turer, ekonomi,
       })
     : null;
 
@@ -392,6 +420,18 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
     restidAndraMalMin: matt.restidAndraMalMin ?? null,
     prisJmforelse,
     prisSankning,
+    // Byggår kommer bara från Boolis annonssida (se annonsberikning.js) –
+    // null för Hemnet-hus, en ärlig lucka snarare än en gissning.
+    byggar: berikning.byggar,
+    // Hela uträkningen, för den dag en yta vill visa den strukturerat...
+    ekonomi: ekonomi.verdikt !== "okant" ? ekonomi : null,
+    // ...och samma färdigformaterade rader som notisen använder, i samma
+    // form som pendling/omgivning redan har. Alva slår redan ihop de två till
+    // en enda lista och skriver ut varje rad – lägga till den här listan i den
+    // sammanslagningen är hela ändringen som behövs där. Nya eller omskrivna
+    // rader från en framtida push hit dyker sedan upp i Alva utan att någon
+    // rör Alva-koden igen.
+    ekonomiRader,
     aiOmdome,
     url: a.url,
     bild: a.bild ?? null,
@@ -446,6 +486,7 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
       a.adress,
       fakta,
       ...sektion("PRIS", prisRader),
+      ...sektion("EKONOMI", ekonomiRader),
       ...sektion("PENDLING", pendling),
       ...sektion("OMGIVNING", omgivning),
       ...sektion("OBS", noteringar),
