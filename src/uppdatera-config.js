@@ -62,6 +62,24 @@ const TAL_FALT = new Set([
 ]);
 const NATURKRAV = new Set(["något", "båda", "inget"]);
 
+// null är giltigt för alla tal här: "inget tak" i kriterier, "inte ifylld"
+// i hushall – exakt den skillnad harRad() i ekonomi.js redan bygger sin
+// "okänt, inte ett gissat nej"-hållning på.
+const talEllerNull = (namn, varde) => {
+  if (varde === null) return null;
+  const n = Number(varde);
+  if (!Number.isFinite(n) || n < 0) throw new Error(`Ogiltigt värde för ${namn}: ${JSON.stringify(varde)}`);
+  return n;
+};
+
+// Hushållsekonomin (se ekonomi.js) har ingen egen plats i formuläret ovan –
+// bara den handskrivna filredigeringen kunde ändra den, utan att något
+// kontrollerade att "45 000" (mellanslag, precis så någon skriver det för
+// hand) inte tyst blev NaN i varje framtida "har vi råd"-beräkning.
+const HUSHALL_TAL_FALT = new Set(["nettoinkomstManad", "kontantinsatsTillgangligt", "ovrigaLanManad"]);
+const ANTAGANDE_TAL_FALT = new Set(["ranta", "kalkylranta", "driftskostnadKvmAr"]);
+const NUVARANDE_BOSTAD_TAL_FALT = new Set(["varde", "kvarstaendeLan", "maklarkostnadProcent"]);
+
 const json = process.env.KRITERIER_JSON?.trim();
 if (json) {
   let inkommet;
@@ -76,11 +94,7 @@ if (json) {
 
   for (const [falt, varde] of Object.entries(inkommet.kriterier ?? {})) {
     if (TAL_FALT.has(falt)) {
-      // null betyder "inget tak" och är giltigt – t.ex. maxPris utan gräns.
-      if (varde === null) { k[falt] = null; continue; }
-      const n = Number(varde);
-      if (!Number.isFinite(n) || n < 0) throw new Error(`Ogiltigt värde för ${falt}: ${JSON.stringify(varde)}`);
-      k[falt] = n;
+      k[falt] = talEllerNull(falt, varde);
     } else if (falt === "objectType") {
       const v = String(varde ?? "").trim();
       if (!v) throw new Error("objectType får inte vara tomt.");
@@ -100,6 +114,39 @@ if (json) {
   }
   if (typeof inkommet.notiser?.endastTräffar === "boolean") {
     config.notiser.endastTräffar = inkommet.notiser.endastTräffar;
+  }
+
+  if (inkommet.hushall !== undefined) {
+    if (typeof inkommet.hushall !== "object" || inkommet.hushall === null) {
+      throw new Error("hushall måste vara ett objekt.");
+    }
+    config.hushall ??= {};
+    const h = config.hushall;
+
+    for (const [falt, varde] of Object.entries(inkommet.hushall)) {
+      if (HUSHALL_TAL_FALT.has(falt)) {
+        h[falt] = talEllerNull(falt, varde);
+      } else if (falt === "antagande") {
+        if (typeof varde !== "object" || varde === null) throw new Error("hushall.antagande måste vara ett objekt.");
+        h.antagande ??= {};
+        for (const [af, av] of Object.entries(varde)) {
+          if (!ANTAGANDE_TAL_FALT.has(af)) throw new Error(`Okänt fält i hushall.antagande: ${af}`);
+          h.antagande[af] = talEllerNull(`antagande.${af}`, av);
+        }
+      } else if (falt === "nuvarandeBostad") {
+        // null tar bort hela avsnittet – hushållet har inte längre en
+        // nuvarande bostad att räkna en försäljning på.
+        if (varde === null) { h.nuvarandeBostad = null; continue; }
+        if (typeof varde !== "object") throw new Error("hushall.nuvarandeBostad måste vara ett objekt eller null.");
+        h.nuvarandeBostad ??= {};
+        for (const [nf, nv] of Object.entries(varde)) {
+          if (!NUVARANDE_BOSTAD_TAL_FALT.has(nf)) throw new Error(`Okänt fält i hushall.nuvarandeBostad: ${nf}`);
+          h.nuvarandeBostad[nf] = talEllerNull(`nuvarandeBostad.${nf}`, nv);
+        }
+      } else {
+        throw new Error(`Okänt hushållsfält: ${falt}`);
+      }
+    }
   }
 }
 

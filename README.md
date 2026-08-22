@@ -129,9 +129,21 @@ separat privat repo, [bostadsvakt-data](https://github.com/matthewholm/bostadsva
 som varje workflow checkar ut vid sidan av sig själv (`data-repo/`, en
 fine-grained token scopad bara till det repot — `DATA_REPO_TOKEN`).
 
-**Via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. Funkar även i GitHub-appen i mobilen. Resultatet visas i körningens sammanfattning, och sparas till `bostadsvakt-data`.
+**Via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. De handskrivna fälten täcker inte allt (bara åtta rymdes i formuläret); fältet **"Kriterier/hushall som JSON"** tar resten i ett svep, kriterier *och* hushållsekonomi, och är den enda vägen som faktiskt kontrollerar vad du skriver innan den sparar — ett felstavat fält eller ett tal med mellanslag ("45 000") avbryts med ett tydligt fel i stället för att tyst bli fel eller `NaN` i nästa "har vi råd"-uträkning. Funkar även i GitHub-appen i mobilen. Resultatet visas i körningens sammanfattning, och sparas till `bostadsvakt-data`.
 
-Allt sparas i `bostadsvakt-data/config.json`, som du förstås också kan redigera direkt i det repot:
+```jsonc
+{
+  "kriterier": { "maxPris": 4000000, "minBoarea": 100 },
+  "hushall": {
+    "nettoinkomstManad": 45000,
+    "kontantinsatsTillgangligt": 800000,
+    "ovrigaLanManad": 2000,           // t.ex. billån, valfritt
+    "nuvarandeBostad": { "varde": 3500000, "kvarstaendeLan": 1200000 }
+  }
+}
+```
+
+Allt sparas i `bostadsvakt-data/config.json`, som du förstås också kan redigera direkt i det repot — men då utan den kontrollen, se `src/uppdatera-config.js` för exakt vilka fält och typer som valideras:
 
 ```jsonc
 {
@@ -142,9 +154,16 @@ Allt sparas i `bostadsvakt-data/config.json`, som du förstås också kan redige
     "maxAvståndHållplatsM": 1000,     // max meter till närmaste hållplats
     "maxAvståndVattenM": 1500,
     "maxAvståndSkogM": 500,
-    "kravVattenEllerSkog": true,      // minst ett av vatten/skog måste uppfyllas
+    "kravNatur": "något",             // "något" (vatten ELLER skog), "båda", eller "inget"
     "maxGrannarInom300m": 15,
     "andraMal": { "namn": "Kontoret", "adress": "Sveavägen 1, Stockholm" } // valfritt, bara informativt – inget hårt filter
+  },
+  "hushall": {
+    "nettoinkomstManad": null,             // opt-in – utan den räknas ingen "har vi råd" alls
+    "kontantinsatsTillgangligt": null,
+    "ovrigaLanManad": 0,
+    "antagande": { "ranta": 3.5, "kalkylranta": 6, "driftskostnadKvmAr": 400 }, // valfritt, se ekonomi.js för defaultvärden
+    "nuvarandeBostad": null                // { "varde": ..., "kvarstaendeLan": ... } för att räkna en försäljnings nettolikvid
   },
   "notiser": { "endastTräffar": true } // false = notis om ALLA nya, träffar märks med 🎯
 }

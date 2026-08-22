@@ -44,9 +44,11 @@ on:
       # Hela kriterieuppsättningen som JSON, i ett svep – de handskrivna
       # fälten ovan täcker inte hustyp, rum, ytor eller restid, och GitHub
       # tillåter bara tio inputs totalt. Lämna tomt när du fyller i
-      # formuläret för hand.
+      # formuläret för hand. Täcker även hushall (nettoinkomstManad,
+      # kontantinsatsTillgangligt, ovrigaLanManad, antagande, nuvarandeBostad)
+      # – den enda validerade vägen dit, se uppdatera-config.js.
       json:
-        description: "Alla kriterier som JSON (lämna tomt för att fylla i formuläret ovan istället)"
+        description: 'Kriterier/hushall som JSON, t.ex. {"kriterier":{"maxPris":4000000},"hushall":{"nettoinkomstManad":45000}}'
         required: false
         type: string
 
