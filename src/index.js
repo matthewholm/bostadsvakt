@@ -459,9 +459,18 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
   // meddelandetext (se längre ner) och aldrig i den här listan, så Bostäder
   // visade aldrig varför ett hus fick sin poäng eller hur priset låg mot
   // områdets snitt, trots att båda redan räknades ut för varje hus.
+  // Sorterade på faktiskt bidrag, inte beräkningsordning: den faktor som
+  // faktiskt drog upp eller ner poängen mest står överst. Ett rått delpoäng
+  // ("Natur: 93/100") säger inget om hur mycket det spelade roll – två hus
+  // kan båda ha "Avskildhet: 0/100" men det kostar 30 poäng på ett hus där
+  // avskildhet väger tungt och 5 på ett där det knappt räknas. Bidraget
+  // (delpoang × vikt, se score.js) är den siffran ingen bostadssajt kan
+  // visa, för den kräver just det här hushållets egna vikter.
   const matchningRader = matchning.delar.length
     ? [
-        ...matchning.delar.map((d) => `${d.namn}: ${d.delpoang}/100 (vikt ${Math.round(d.andelProcent)} %)`),
+        ...[...matchning.delar]
+          .sort((a, b) => b.bidrag - a.bidrag)
+          .map((d) => `${d.namn}: ${d.bidrag} av ${d.maxBidrag} poäng (${d.delpoang}/100, vikt ${Math.round(d.andelProcent)} %)`),
         matchning.forklaring,
       ]
     : [];
