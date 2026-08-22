@@ -1,18 +1,21 @@
 // Bygger data/sida.json ur data/traffar.json – husflödet i den generiska
-// { items: [{ id, title, image, url, links, rader }] }-form vilken sida som
-// helst kan rita utan att veta vad ett hus är. Körs i workflowens
+// { items: [{ id, title, image, url, links, sortable, rader }] }-form vilken
+// sida som helst kan rita utan att veta vad ett hus är. Körs i workflowens
 // spara-loop, EFTER merge.js och INNE I data-repo/-checkouten, så att sidan
 // alltid speglar den nyss sammanslagna versionen av traffar.json och inte
 // en gammal. Anropas som:
 //   node ../src/sida.js
 // och läser/skriver relativt CWD – som ska vara data-repo/ när det här körs.
 //
-// id/title/image/url/links är strukturerade fält – det är dem Alva behöver
-// för att spara/dölja/anteckna ett hus även efter att det försvunnit ur
-// flödet (sålt, borttaget), och för att rita klickbara länkar i stället för
-// URL:er som text. `links` är avsiktligt generisk (etikett + URL, ingen
-// "mäklarlänk"-nyckel) – det som råkar vara en till länk för ett hus är för
-// en annan källa kanske en recension eller ett produktblad. Allt annat –
+// id/title/image/url/links/sortable är strukturerade fält – det är dem Alva
+// behöver för att spara/dölja/anteckna ett hus även efter att det försvunnit
+// ur flödet (sålt, borttaget), rita klickbara länkar i stället för URL:er
+// som text, och sortera listan på ett tal i stället för en formaterad
+// sträng ("3 995 000 kr" går inte att sortera på utan att veta vilken
+// formatering just den här sidan råkar använda). Både `links` och
+// `sortable` är avsiktligt generiska (etikett + värde, ingen
+// "mäklarlänk"/"pris"-nyckel) – det som råkar vara husets pris för det här
+// huset är för en annan källa kanske en helt annan sorts tal. Allt annat –
 // pendling, omgivning, matchning, AI-omdöme – är fritext i rader, för det
 // är just det de är: text ingen sida behöver förstå strukturen av, bara visa.
 import { readFileSync, writeFileSync } from "node:fs";
@@ -55,6 +58,11 @@ const post = (hus) => {
     image: hus.bild || undefined,
     url: hus.url || undefined,
     links: hus.maklarlank ? [{ label: "Öppna hos mäklaren", url: hus.maklarlank }] : undefined,
+    sortable: [
+      hus.poang != null && { label: "Matchning", value: hus.poang },
+      hus.pris != null && { label: "Pris", value: hus.pris },
+      hus.byggar != null && { label: "Ålder", value: hus.byggar },
+    ].filter(Boolean),
     rader,
   };
 };
