@@ -481,6 +481,11 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
     // webbläsare igen för ett hus som redan svarat, tomt eller inte.
     maklarkalkyl,
     maklarkalkylHamtad,
+    // Länken till mäklarens egen sida, sparad separat från siffrorna som
+    // lästes ur den – en yta som visar husen kan länka dit även när
+    // kalkylen själv är tom (t.ex. "Kommande försäljning" utan boendekalkyl
+    // ännu), och tvärtom slipper den bygga om URL:en ur delar.
+    maklarlank: berikning.maklarlank ?? tidigareForMaklarkalkyl?.maklarlank ?? null,
     // Hela uträkningen, för den dag en yta vill visa den strukturerat...
     ekonomi: ekonomi.verdikt !== "okant" ? ekonomi : null,
     // ...och samma rader, grupperade under en rubrik, i sektioner nedan –
