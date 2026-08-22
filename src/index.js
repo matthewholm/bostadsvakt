@@ -16,7 +16,7 @@ import { skrivBedomning } from "./ai.js";
 import { lasSlutpriser, sparaSlutpriser, jamforPris } from "./slutpriser.js";
 import { berikaFranBooli, arBooliAnnons } from "./annonsberikning.js";
 import { hamtaMaklarkalkyl } from "./maklarkalkyl.js";
-import { harRad } from "./ekonomi.js";
+import { harRad, saljaNuvarandeBostad } from "./ekonomi.js";
 
 // config.json och data/ läses från det privata bostadsvakt-data-repot, som
 // workflowen checkar ut vid sidan av det här repot (se .github/workflows) –
@@ -389,15 +389,26 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
     driftskostnadKandKrManad: berikning.driftskostnadManad,
     hushall: config.hushall,
   });
-  const ekonomiRader =
-    ekonomi.verdikt !== "okant"
+  // Rent informativ – räknas fristående av kontantinsatsTillgangligt, som
+  // hushållet fyller i själv och kan redan ha räknat med försäljningen i.
+  // Ändrar alltså inget i har-vi-råd-utfallet ovan, bara visar vad
+  // försäljningen faktiskt lämnar kvar efter lån och mäklarkostnad.
+  const forsaljning = config.hushall?.nuvarandeBostad
+    ? saljaNuvarandeBostad(config.hushall.nuvarandeBostad)
+    : null;
+
+  const ekonomiRader = [
+    ...(ekonomi.verdikt !== "okant"
       ? [
           `Lån: ${ekonomi.lan.toLocaleString("sv-SE")} kr (${ekonomi.belaningsgradProcent}% belåningsgrad, ${ekonomi.amorteringsprocent}% amortering/år)`,
           `Engångskostnad: ${ekonomi.engangskostnad.toLocaleString("sv-SE")} kr (lagfart + pantbrev)`,
           `Månadskostnad: ca ${ekonomi.manad.total.toLocaleString("sv-SE")} kr idag, ca ${ekonomi.manadStress.total.toLocaleString("sv-SE")} kr stresstestat (${ekonomi.antaganden.kalkylranta}% ränta)`,
           ekonomi.verdikt === "ja" ? `✓ Har råd: ${ekonomi.forklaring}` : `⚠ Har troligen inte råd: ${ekonomi.forklaring}`,
         ]
-      : [];
+      : []),
+    forsaljning &&
+      `Nuvarande bostad netto: ${forsaljning.nettoLikvid.toLocaleString("sv-SE")} kr (värde ${forsaljning.varde.toLocaleString("sv-SE")} kr − lån ${forsaljning.kvarstaendeLan.toLocaleString("sv-SE")} kr − mäklarkostnad ${forsaljning.maklarkostnad.toLocaleString("sv-SE")} kr)`,
+  ].filter(Boolean);
 
   const pris = a.pris ? `${a.pris.toLocaleString("sv-SE")} kr` : "";
   const typNamn = a.typ ? a.typ.charAt(0).toUpperCase() + a.typ.slice(1) : "Bostad";
@@ -444,7 +455,19 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
    * läser dem direkt och ska inte behöva följa med i den här omläggningen).
    */
   const grupp = (titel, rader) => (rader.length ? { titel, rader } : null);
+  // MATCHNING och PRIS fanns redan – de byggdes bara in i notisens egen
+  // meddelandetext (se längre ner) och aldrig i den här listan, så Bostäder
+  // visade aldrig varför ett hus fick sin poäng eller hur priset låg mot
+  // områdets snitt, trots att båda redan räknades ut för varje hus.
+  const matchningRader = matchning.delar.length
+    ? [
+        ...matchning.delar.map((d) => `${d.namn}: ${d.delpoang}/100 (vikt ${Math.round(d.andelProcent)} %)`),
+        matchning.forklaring,
+      ]
+    : [];
   const sektioner = [
+    grupp("MATCHNING", matchningRader),
+    grupp("PRIS", prisRader),
     grupp("PENDLING", pendling),
     grupp("OMGIVNING", omgivning),
     grupp("EKONOMI", ekonomiRader),

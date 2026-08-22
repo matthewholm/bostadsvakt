@@ -29,7 +29,7 @@ const sektion = (rubrik, rader) => (rader?.length ? ["", rubrik, ...rader] : [])
 
 const post = (hus) => {
   const rader = [
-    [hus.typ, kr(hus.pris), hus.rum && `${hus.rum} rum`, hus.boarea && `${hus.boarea} m²`]
+    [hus.typ, kr(hus.pris), hus.rum && `${hus.rum} rum`, hus.boarea && `${hus.boarea} m²`, hus.byggar && `byggt ${hus.byggar}`]
       .filter(Boolean)
       .join(" · "),
     hus.poang != null && (hus.uppfyller ? `🎯 Träff · ${hus.poang} poäng` : `${hus.poang} poäng`),
