@@ -13,6 +13,7 @@
   "license": "MIT",
   "dependencies": {
     "imapflow": "^1.5.0",
-    "mailparser": "^3.9.14"
+    "mailparser": "^3.9.14",
+    "playwright": "^1.62.1"
   }
 }

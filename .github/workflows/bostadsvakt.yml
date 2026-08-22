@@ -34,6 +34,10 @@ jobs:
 
       - run: npm ci
 
+      # Bara Chromium behövs (maklarkalkyl.js), inte Firefox/WebKit som
+      # playwright install annars laddar ner i onödan.
+      - run: npx playwright install --with-deps chromium
+
       - name: Kör bostadsvakten
         env:
           BOOLI_CALLER_ID: ${{ secrets.BOOLI_CALLER_ID }}

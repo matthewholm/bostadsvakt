@@ -15,6 +15,7 @@ import {
   totalkostnad, levnadsomkostnad, kalp, saljaNuvarandeBostad, harRad,
 } from "../src/ekonomi.js";
 import { arBooliAnnons, tolkaBooliannons } from "../src/annonsberikning.js";
+import { hittaMaklarlank, tolkaMaklarkalkyl } from "../src/maklarkalkyl.js";
 
 // ---------------------------------------------------------------------------
 // Län och trafikbolag
@@ -551,4 +552,58 @@ test("bara Booli-annonser (booli.se-url) plockas ut för berikning, aldrig Hemne
   assert.equal(arBooliAnnons({ id: "booli-123", url: "https://www.booli.se/annons/123" }), true);
   assert.equal(arBooliAnnons({ id: "hemnet-456", url: "https://www.hemnet.se/bostad/456" }), false);
   assert.equal(arBooliAnnons({ id: "booli-123", url: null }), false, "ett booli-id utan url ska inte hämtas");
+});
+
+// ---------------------------------------------------------------------------
+// Mäklarens egen boendekalkyl
+//
+// Länken och kalkyltexten nedan är hämtade ur riktiga sidor (Booli respektive
+// en Vitec-driven mäklarsajt), inte påhittade – se maklarkalkyl.js.
+// ---------------------------------------------------------------------------
+
+test("hittar mäklarlänken i Boolis HTML, oavsett om den är HTML- eller JS-strängkodad", () => {
+  const htmlKodad =
+    'href="https://connect-resolve.maklare.vitec.net/Description/S12663/OBJ5PPLNFK39PJJCZ5BVN/Booli?utm_source=booli&amp;utm_medium=referral"';
+  assert.equal(
+    hittaMaklarlank(htmlKodad),
+    "https://connect-resolve.maklare.vitec.net/Description/S12663/OBJ5PPLNFK39PJJCZ5BVN/Booli?utm_source=booli&utm_medium=referral",
+  );
+
+  const jsKodad =
+    '"url":"https://connect-resolve.maklare.vitec.net/Description/S13169/OBJ5PH2WMK2LSCBZ6X5VY/Booli?utm_source=booli\\u0026utm_medium=referral"';
+  assert.equal(
+    hittaMaklarlank(jsKodad),
+    "https://connect-resolve.maklare.vitec.net/Description/S13169/OBJ5PH2WMK2LSCBZ6X5VY/Booli?utm_source=booli&utm_medium=referral",
+  );
+});
+
+test("ingen mäklarlänk hittas ger null, inte ett fel", () => {
+  assert.equal(hittaMaklarlank("<html>en annons utan mäklarlänk</html>"), null);
+});
+
+test("Boolis egen berikning plockar med mäklarlänken när den finns", () => {
+  const html =
+    '{"key":"constructionYear","value":{"plainText":"1962"}}' +
+    'href="https://connect-resolve.maklare.vitec.net/Description/S1/OBJ1/Booli"';
+  assert.equal(
+    tolkaBooliannons(html).maklarlank,
+    "https://connect-resolve.maklare.vitec.net/Description/S1/OBJ1/Booli",
+  );
+});
+
+test("tolkar mäklarens kalkyltext, etikett och belopp utan mellanslag emellan", () => {
+  const text = "Ränta (efter skattereduktion)3 557 kr\nAmortering3 750 kr\nDriftkostnad5 032 kr\nLagfart37 500 kr\nPantbrevsavgiftIngen information";
+  const r = tolkaMaklarkalkyl(text);
+  assert.equal(r.driftkostnadManad, 5032);
+  assert.equal(r.lagfart, 37_500);
+  assert.equal(r.amorteringManad, 3750);
+});
+
+test("pantbrevsavgift utan siffror (mäklaren har ingen information) blir null, inte ett fel", () => {
+  // Fältet finns inte i tolkaMaklarkalkyl ännu (se maklarkalkyl.js) - detta
+  // testar att en etikett utan belopp överhuvudtaget inte kraschar tolkningen.
+  const r = tolkaMaklarkalkyl("PantbrevsavgiftIngen information");
+  assert.equal(r.driftkostnadManad, null);
+  assert.equal(r.lagfart, null);
+  assert.equal(r.amorteringManad, null);
 });

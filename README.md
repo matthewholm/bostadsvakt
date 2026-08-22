@@ -17,6 +17,8 @@ Körs gratis i GitHub Actions var 30:e minut – din dator behöver inte vara p�
 5. **OpenStreetMap (Overpass)** – uppskattar avstånd till vatten och skog samt räknar byggnader inom 300 m (grannar). Ingen nyckel behövs.
 6. **Home Assistant-webhook** – skickar push med adress, pris och alla avstånd, med länk direkt till annonsen.
 
+Två fält till hämtas från Booli-annonser, utöver de sex ovan: **driftskostnad och byggår** direkt från annonssidan ([src/annonsberikning.js](src/annonsberikning.js)), och **mäklarens egen boendekalkyl** (driftkostnad, lagfart, amortering enligt mäklaren) från mäklarens länk på Boolis annonssida – bara den bekräftade Vitec-plattformen hittills, en headless webbläsare krävs eftersom mäklarsidorna renderas med JavaScript ([src/maklarkalkyl.js](src/maklarkalkyl.js)). Hämtas en gång per hus, inte varje körning.
+
 ### Vilket trafikbolag och hur många biljetter?
 
 Vilket biljettsystem som gäller avgörs av **länet**, inte av vilka bolagsnamn som råkar dyka upp i ett enskilt reseförslag:
@@ -196,6 +198,12 @@ Klona [bostadsvakt-data](https://github.com/matthewholm/bostadsvakt-data) till `
 
 ```
 git clone https://github.com/matthewholm/bostadsvakt-data.git data-repo
+```
+
+`maklarkalkyl.js` styr en headless Chromium (mäklarsidorna kräver JavaScript – vanlig fetch räcker inte, se filens egen kommentar). Efter `npm install`, en gång:
+
+```
+npx playwright install chromium
 ```
 
 Skapa en fil `.env` i projektmappen:

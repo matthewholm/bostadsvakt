@@ -1,7 +1,12 @@
-// Hämtar driftskostnad och byggår direkt från Boolis annonssida – fält
-// bevakningsmejlen aldrig innehåller, men som avgör hela kostnadsbilden i
-// ekonomi.js. Bara Booli: Hemnets robots.txt ligger bakom en Cloudflare-
-// utmaning (även robots.txt själv svarar med en JS-captcha), vilket är aktiv
+// Hämtar driftskostnad, byggår och mäklarens egen länk direkt från Boolis
+// annonssida – fält bevakningsmejlen aldrig innehåller, men som avgör hela
+// kostnadsbilden i ekonomi.js. Mäklarlänken går vidare till
+// maklarkalkyl.js, som hämtar mer (lagfart, pantbrevsavgift) från
+// mäklarens egen sida – men bara denna fil rör Boolis.
+import { hittaMaklarlank } from "./maklarkalkyl.js";
+//
+// Bara Booli: Hemnets robots.txt ligger bakom en Cloudflare-utmaning (även
+// robots.txt själv svarar med en JS-captcha), vilket är aktiv
 // bot-blockering, inte bara ett villkor i finstilt – och att kringgå den vore
 // exakt den sortens spel mot ett skydd som appen aldrig annars ägnar sig åt.
 // Boolis robots.txt tillåter uttryckligen annonssidorna.
@@ -37,13 +42,14 @@ export function tolkaBooliannons(html) {
     driftskostnadManad = driftM[2] === "år" ? Math.round(belopp / 12) : belopp;
   }
 
-  return { byggar, driftskostnadManad };
+  return { byggar, driftskostnadManad, maklarlank: hittaMaklarlank(html) };
 }
 
 /** Never kastar – ett fel eller en oväntad sidlayout ska bara lämna
  * fälten null, aldrig avbryta körningen för de andra husen. */
 export async function berikaFranBooli(annons) {
-  if (!arBooliAnnons(annons)) return { byggar: null, driftskostnadManad: null };
+  const tomt = { byggar: null, driftskostnadManad: null, maklarlank: null };
+  if (!arBooliAnnons(annons)) return tomt;
   try {
     const res = await fetch(annons.url, {
       headers: {
@@ -54,11 +60,11 @@ export async function berikaFranBooli(annons) {
     });
     if (!res.ok) {
       console.warn(`  Kunde inte hämta annonssidan (${res.status}) för ${annons.id} – hoppar över berikning.`);
-      return { byggar: null, driftskostnadManad: null };
+      return tomt;
     }
     return tolkaBooliannons(await res.text());
   } catch (err) {
     console.warn(`  Kunde inte hämta annonssidan för ${annons.id}: ${err.message}`);
-    return { byggar: null, driftskostnadManad: null };
+    return tomt;
   }
 }

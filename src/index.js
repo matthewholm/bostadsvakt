@@ -15,6 +15,7 @@ import { beraknaMatchning } from "./score.js";
 import { skrivBedomning } from "./ai.js";
 import { lasSlutpriser, sparaSlutpriser, jamforPris } from "./slutpriser.js";
 import { berikaFranBooli, arBooliAnnons } from "./annonsberikning.js";
+import { hamtaMaklarkalkyl } from "./maklarkalkyl.js";
 import { harRad } from "./ekonomi.js";
 
 // config.json och data/ läses från det privata bostadsvakt-data-repot, som
@@ -356,6 +357,29 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
   const berikning = await berikaFranBooli(a);
   if (arBooliAnnons(a)) await paus(800);
 
+  // Mäklarens egen boendekalkyl (driftkostnad, lagfart, amortering enligt
+  // mäklaren) – bara den bekräftade Vitec-plattformen än (se
+  // maklarkalkyl.js). En headless webbläsare kostar sekunder per hus, mycket
+  // mer än en vanlig fetch, så det görs bara en gång per hus: siffrorna
+  // ändras inte under en annons livstid, och "hämtad" sparas oavsett utfall
+  // (även en tom kalkyl är ett svar, inte ett fel att försöka om).
+  const tidigareForMaklarkalkyl = traffarLagrade.get(a.id);
+  const maklarkalkylHamtad = Boolean(tidigareForMaklarkalkyl?.maklarkalkylHamtad) || Boolean(berikning.maklarlank);
+  const maklarkalkyl = tidigareForMaklarkalkyl?.maklarkalkylHamtad
+    ? (tidigareForMaklarkalkyl.maklarkalkyl ?? null)
+    : berikning.maklarlank
+      ? await hamtaMaklarkalkyl(berikning.maklarlank)
+      : null;
+  const maklarkalkylRader = maklarkalkyl
+    ? [
+        maklarkalkyl.driftkostnadManad != null &&
+          `Driftkostnad enligt mäklaren: ${maklarkalkyl.driftkostnadManad.toLocaleString("sv-SE")} kr/mån`,
+        maklarkalkyl.lagfart != null && `Lagfart enligt mäklaren: ${maklarkalkyl.lagfart.toLocaleString("sv-SE")} kr`,
+        maklarkalkyl.amorteringManad != null &&
+          `Amortering enligt mäklarens kalkyl: ${maklarkalkyl.amorteringManad.toLocaleString("sv-SE")} kr/mån`,
+      ].filter(Boolean)
+    : [];
+
   // Har hushållet råd? "okänt" (inte ett gissat nej) tills hushall är ifyllt
   // i config.json – se ekonomi.js. Räknas på alla hus, oavsett läge, eftersom
   // den bara behöver pris och boarea.
@@ -424,6 +448,7 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
     grupp("PENDLING", pendling),
     grupp("OMGIVNING", omgivning),
     grupp("EKONOMI", ekonomiRader),
+    grupp("MÄKLARENS KALKYL", maklarkalkylRader),
   ].filter(Boolean);
 
   // Spara ALLA hus till flödet (Bostäder), behåll ev. panel-flaggor.
@@ -451,6 +476,11 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
     // Byggår kommer bara från Boolis annonssida (se annonsberikning.js) –
     // null för Hemnet-hus, en ärlig lucka snarare än en gissning.
     byggar: berikning.byggar,
+    // Mäklarens boendekalkyl (se maklarkalkyl.js), plus en flagga för att
+    // det försökts – annars skulle varje körning betala en headless
+    // webbläsare igen för ett hus som redan svarat, tomt eller inte.
+    maklarkalkyl,
+    maklarkalkylHamtad,
     // Hela uträkningen, för den dag en yta vill visa den strukturerat...
     ekonomi: ekonomi.verdikt !== "okant" ? ekonomi : null,
     // ...och samma rader, grupperade under en rubrik, i sektioner nedan –
