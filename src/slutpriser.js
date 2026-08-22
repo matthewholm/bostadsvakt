@@ -5,7 +5,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { laddaDetaljer } from "./mailsource.js";
 
-const FIL = new URL("../data/slutpriser.json", import.meta.url);
+const FIL = new URL("../data-repo/data/slutpriser.json", import.meta.url);
 const MAX_POSTER = 400;
 const MAX_ALDER_DAGAR = 270; // ~9 månader – tillräckligt färskt för att spegla marknaden
 const MIN_JAMFORELSER = 3; // för få sålda hus i ett område ger ett opålitligt snitt

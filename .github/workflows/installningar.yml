@@ -41,23 +41,26 @@ on:
         type: choice
         options: ["behåll", "ja", "nej"]
         default: "behåll"
-      # Hela kriterieuppsättningen som JSON. Finns för att Home OS ska kunna
-      # skicka alla fält på en gång – GitHub tillåter bara tio inputs, och de
-      # handskrivna fälten ovan täcker inte hustyp, rum, ytor eller restid.
-      # Lämna tomt när du fyller i formuläret för hand.
+      # Hela kriterieuppsättningen som JSON, i ett svep – de handskrivna
+      # fälten ovan täcker inte hustyp, rum, ytor eller restid, och GitHub
+      # tillåter bara tio inputs totalt. Lämna tomt när du fyller i
+      # formuläret för hand.
       json:
-        description: "Alla kriterier som JSON (används av Home OS – lämna tomt här)"
+        description: "Alla kriterier som JSON (lämna tomt för att fylla i formuläret ovan istället)"
         required: false
         type: string
-
-permissions:
-  contents: write
 
 jobs:
   uppdatera:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      - uses: actions/checkout@v5
+        with:
+          repository: matthewholm/bostadsvakt-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data-repo
 
       - uses: actions/setup-node@v5
         with:
@@ -80,10 +83,11 @@ jobs:
         run: |
           echo "## Aktuella inställningar" >> "$GITHUB_STEP_SUMMARY"
           echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          cat config.json >> "$GITHUB_STEP_SUMMARY"
+          cat data-repo/config.json >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Committa ändringen
+      - name: Committa ändringen i bostadsvakt-data
+        working-directory: data-repo
         run: |
           if ! git diff --quiet config.json; then
             git config user.name "bostadsvakt-bot"

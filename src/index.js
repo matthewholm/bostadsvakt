@@ -17,7 +17,12 @@ import { lasSlutpriser, sparaSlutpriser, jamforPris } from "./slutpriser.js";
 import { berikaFranBooli, arBooliAnnons } from "./annonsberikning.js";
 import { harRad } from "./ekonomi.js";
 
-const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
+// config.json och data/ läses från det privata bostadsvakt-data-repot, som
+// workflowen checkar ut vid sidan av det här repot (se .github/workflows) –
+// inte från det här repot självt, som är (eller blir) publikt. Lokalt: klona
+// bostadsvakt-data till ../bostadsvakt-data eller symlänka en data-repo/-mapp
+// här, se README.
+const config = JSON.parse(readFileSync(new URL("../data-repo/config.json", import.meta.url), "utf8"));
 const k = config.kriterier;
 const paus = (ms) => new Promise((r) => setTimeout(r, ms));
 const normTyp = (s) => (s ?? "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");

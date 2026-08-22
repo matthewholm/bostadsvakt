@@ -1,7 +1,7 @@
 // Håller reda på vilka annonser som redan setts (data/seen.json).
 import { readFileSync, writeFileSync } from "node:fs";
 
-const FIL = new URL("../data/seen.json", import.meta.url);
+const FIL = new URL("../data-repo/data/seen.json", import.meta.url);
 
 export function lasSedda() {
   try {

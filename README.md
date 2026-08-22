@@ -10,7 +10,7 @@ Körs gratis i GitHub Actions var 30:e minut – din dator behöver inte vara p�
 
 ## Så funkar den
 
-1. **Booli API** – hämtar nya villaannonser för sökområdena i [config.json](config.json).
+1. **Booli API** – hämtar nya villaannonser för sökområdena i `config.json`, som bor i [bostadsvakt-data](https://github.com/matthewholm/bostadsvakt-data) (se [Var data bor](#var-data-bor)).
 2. **Geokodning med kommunkontroll** (Nominatim/Photon) – översätter adressen till koordinater och **verifierar att träffen ligger i rätt kommun** innan den accepteras. Utan verifiering kan en gata med samma namn i fel del av landet accepteras blint. Se [src/geocode.js](src/geocode.js).
 3. **Trafiklab ResRobot** – närmaste hållplats, närmaste tågstation, restid till Stockholm C och **turtäthet** (hur många avgångar det faktiskt går en vanlig vardag). Täcker hela Sverige, alltså både SL och UL, med samma nyckel.
 4. **SL Transport-API** (ingen nyckel) – används där huset ligger i SL-område, för att namnge hållplatser/linjer exakt och upptäcka **anropsstyrd närtrafik som måste bokas i förväg**.
@@ -101,29 +101,40 @@ Kräver `BOOLI_CALLER_ID` + `BOOLI_PRIVATE_KEY`. Boolis publika API-sida är ned
 | **Trafiklab** | Skapa gratiskonto på [developer.trafiklab.se](https://developer.trafiklab.se), skapa ett projekt och lägg till API:t **ResRobot v2.1**. Samma nyckel täcker både SL och UL – ingen separat UL-nyckel behövs. | `RESROBOT_API_KEY` |
 | **SL Transport** | Inget att göra – API:t är öppet och kräver ingen nyckel. | – |
 | **Home Assistant** | En webhook-automation i din HA som skickar vidare till mobilappen/apparna (se "Notiser till flera personer" nedan). | `HA_WEBHOOK_URL` |
+| **bostadsvakt-data** | Kriterier, hushållets ekonomi och husflödet bor i ett separat, privat repo — det här repot är (eller blir) publikt, se avsnittet nedan. Skapa en fine-grained personal access token scopad bara till `bostadsvakt-data`, med Contents: read/write. | `DATA_REPO_TOKEN` |
 
 ### 2. Lägg in hemligheterna i GitHub
 
-Gå till repot → **Settings → Secrets and variables → Actions → New repository secret** och lägg in de fyra hemligheterna ovan. Eller via terminalen:
+Gå till repot → **Settings → Secrets and variables → Actions → New repository secret** och lägg in hemligheterna ovan. Eller via terminalen:
 
 ```
 gh secret set BOOLI_CALLER_ID
 gh secret set BOOLI_PRIVATE_KEY
 gh secret set RESROBOT_API_KEY
 gh secret set HA_WEBHOOK_URL
+gh secret set DATA_REPO_TOKEN
 ```
 
 ### 3. Starta
 
 Gå till fliken **Actions** i repot, välj workflowen **Bostadsvakt** och klicka **Run workflow** (första gången). Därefter kör den automatiskt var 30:e minut kl 06–21.
 
-## Anpassa kriterierna
+## Var data bor
 
-**Allra enklast: kontrollpanelen** — en webbsida med reglage för alla kriterier, knappar för att köra test/bevakning och lista över senaste körningarna. Den hostas i Home Assistant: `https://home.houseofholm.se/local/bostadsvakt.html`. Logga in med en fine-grained GitHub-token (Contents + Actions, read/write, endast detta repo). Koden ligger i [bostadsvakt-panel](https://github.com/matthewholm/bostadsvakt-panel) — uppdatera kopian med `wget` enligt panel-repots README.
+Kriterier, hushållets ekonomi och husflödet ligger inte i det här repot —
+det är (eller blir) publikt, och den datan är personlig. De bor i ett
+separat privat repo, [bostadsvakt-data](https://github.com/matthewholm/bostadsvakt-data),
+som varje workflow checkar ut vid sidan av sig själv (`data-repo/`, en
+fine-grained token scopad bara till det repot — `DATA_REPO_TOKEN`).
 
-**Eller via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. Funkar även i GitHub-appen i mobilen. Resultatet visas i körningens sammanfattning.
+**Kontrollpanelen** — en webbsida med reglage för alla kriterier, hostad i
+Home Assistant. Koden ligger i [bostadsvakt-panel](https://github.com/matthewholm/bostadsvakt-panel),
+och behöver peka mot `bostadsvakt-data` för att läsa/skriva rätt fil numera
+— uppdatera kopian enligt panel-repots README.
 
-Allt sparas i [config.json](config.json), som du förstås också kan redigera direkt:
+**Eller via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. Funkar även i GitHub-appen i mobilen. Resultatet visas i körningens sammanfattning, och sparas till `bostadsvakt-data`.
+
+Allt sparas i `bostadsvakt-data/config.json`, som du förstås också kan redigera direkt i det repot:
 
 ```jsonc
 {
@@ -159,6 +170,12 @@ npm test
 ```
 
 ## Köra lokalt (för test)
+
+Klona [bostadsvakt-data](https://github.com/matthewholm/bostadsvakt-data) till `data-repo/` bredvid projektet (gitignorad här, precis som workflowsens checkout):
+
+```
+git clone https://github.com/matthewholm/bostadsvakt-data.git data-repo
+```
 
 Skapa en fil `.env` i projektmappen:
 

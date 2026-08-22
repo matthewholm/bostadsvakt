@@ -2,7 +2,7 @@
 // kontrollpanelen kan visa dem som ett galleri. Nyast först, max 100 sparas.
 import { readFileSync, writeFileSync } from "node:fs";
 
-const FIL = new URL("../data/traffar.json", import.meta.url);
+const FIL = new URL("../data-repo/data/traffar.json", import.meta.url);
 
 export function lasTraffar() {
   try {

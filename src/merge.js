@@ -1,8 +1,10 @@
 // Slår ihop den här körningens data (sparad undan före en hård reset) med
-// den senaste versionen från origin. Körs i workflowens spara-loop så att
-// samtidiga körningar aldrig krockar. Anropas som:
-//   node src/merge.js <mina-traffar.json> [<mina-seen.json>] [<mina-slutpriser.json>]
-// och skriver de sammanslagna data/traffar.json (+ seen.json/slutpriser.json om angivna).
+// den senaste versionen från origin. Körs i workflowens spara-loop, INNE I
+// data-repo/-checkouten (bostadsvakt-data, se README) så att samtidiga
+// körningar aldrig krockar. Anropas som:
+//   node ../src/merge.js <mina-traffar.json> [<mina-seen.json>] [<mina-slutpriser.json>]
+// och skriver de sammanslagna data/traffar.json (+ seen.json/slutpriser.json om angivna),
+// relativt CWD – som ska vara data-repo/ när det här körs.
 import { readFileSync, writeFileSync } from "node:fs";
 
 const [, , minaTraffarPath, minaSeddaPath, minaSlutpriserPath] = process.argv;

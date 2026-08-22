@@ -6,7 +6,7 @@ import { notis } from "./notify.js";
 
 function las(path, fallback) {
   try {
-    return JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), "utf8"));
+    return JSON.parse(readFileSync(new URL(`../data-repo/${path}`, import.meta.url), "utf8"));
   } catch {
     return fallback;
   }

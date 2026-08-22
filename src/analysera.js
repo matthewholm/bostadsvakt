@@ -12,7 +12,7 @@ import { beraknaPoang } from "./score.js";
 import { skrivBedomning } from "./ai.js";
 import { lasSlutpriser, jamforPris } from "./slutpriser.js";
 
-const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
+const config = JSON.parse(readFileSync(new URL("../data-repo/config.json", import.meta.url), "utf8"));
 const k = config.kriterier;
 const fmtTid = (min) => (min >= 60 ? `${Math.floor(min / 60)} tim ${min % 60} min` : `${min} min`);
 

@@ -6,9 +6,6 @@ on:
     - cron: "*/30 4-19 * * *"
   workflow_dispatch: {}
 
-permissions:
-  contents: write
-
 concurrency:
   group: bostadsvakt
   cancel-in-progress: false
@@ -18,6 +15,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      # Kriterier, hushållets ekonomi och husflödet bor i ett separat privat
+      # repo, inte här – det här repot är (eller blir) publikt, och config.json
+      # var på väg att bära en hel familjs inkomst och sparande. Se
+      # bostadsvakt-data/README.md. `data-repo`-token är en fine-grained PAT
+      # scopad bara till det repot (Contents: read/write).
+      - uses: actions/checkout@v5
+        with:
+          repository: matthewholm/bostadsvakt-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data-repo
 
       - uses: actions/setup-node@v5
         with:
@@ -38,7 +46,8 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: node src/index.js
 
-      - name: Spara sedda annonser och träffar
+      - name: Spara sedda annonser och träffar i bostadsvakt-data
+        working-directory: data-repo
         run: |
           cp data/traffar.json /tmp/mina-traffar.json
           cp data/seen.json /tmp/mina-seen.json
@@ -48,7 +57,7 @@ jobs:
           for i in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            node src/merge.js /tmp/mina-traffar.json /tmp/mina-seen.json /tmp/mina-slutpriser.json
+            node ../src/merge.js /tmp/mina-traffar.json /tmp/mina-seen.json /tmp/mina-slutpriser.json
             git add data/
             if git diff --cached --quiet; then echo "Inget nytt att spara."; exit 0; fi
             git commit -m "Uppdatera sedda annonser och träffar"

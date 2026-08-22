@@ -1,2 +1,6 @@
 node_modules/
 .env
+# Klonen av bostadsvakt-data, för lokal körning. Workflowsen checkar ut den
+# hit under CI; lokalt klonar du själv matthewholm/bostadsvakt-data till
+# den här mappen, eller symlänkar den.
+data-repo/

@@ -13,6 +13,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: actions/checkout@v5
+        with:
+          repository: matthewholm/bostadsvakt-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data-repo
+
       - uses: actions/setup-node@v5
         with:
           node-version: 24

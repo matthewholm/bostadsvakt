@@ -2,7 +2,7 @@
 // workflowen "Ändra inställningar". Tomma fält lämnas oförändrade.
 import { readFileSync, writeFileSync } from "node:fs";
 
-const FIL = new URL("../config.json", import.meta.url);
+const FIL = new URL("../data-repo/config.json", import.meta.url);
 const config = JSON.parse(readFileSync(FIL, "utf8"));
 const k = config.kriterier;
 
@@ -46,10 +46,10 @@ if (kravNatur !== undefined) k.kravNatur = kravNatur ? "något" : "inget";
 const endastTraffar = jaNej("ENDAST_TRAFFAR");
 if (endastTraffar !== undefined) config.notiser.endastTräffar = endastTraffar;
 
-// ---- Hela uppsättningen som JSON (från Home OS) ----------------------------
+// ---- Hela uppsättningen som JSON ---------------------------------------
 //
 // Formuläret ovan täcker åtta fält; kriterierna är fler, och GitHub tillåter
-// bara tio inputs per workflow. Home OS skickar därför allt i ett JSON-fält.
+// bara tio inputs per workflow. Det här fältet tar allt i ett svep istället.
 //
 // Det kommer utifrån, så inget tas på förtroende: bara kända fält skrivs, och
 // bara med rätt typ. Ett okänt eller felaktigt fält avbryter hellre hela
