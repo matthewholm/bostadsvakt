@@ -474,13 +474,18 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
         matchning.forklaring,
       ]
     : [];
+  // EKONOMI och MÄKLARENS KALKYL flyttade upp: en köpares första fråga är
+  // "har vi råd", inte hur nära bussen ligger, så svaret på den ska inte
+  // stå sist av sex rubriker. Sidan som visar husen kan lyfta EKONOMI:s
+  // egen verdikt ännu högre (se Alvas promoteVerdict), men ordningen här
+  // är den ärliga baslinjen redan innan den lyften händer.
   const sektioner = [
     grupp("MATCHNING", matchningRader),
+    grupp("EKONOMI", ekonomiRader),
+    grupp("MÄKLARENS KALKYL", maklarkalkylRader),
     grupp("PRIS", prisRader),
     grupp("PENDLING", pendling),
     grupp("OMGIVNING", omgivning),
-    grupp("EKONOMI", ekonomiRader),
-    grupp("MÄKLARENS KALKYL", maklarkalkylRader),
   ].filter(Boolean);
 
   // Spara ALLA hus till flödet (Bostäder), behåll ev. panel-flaggor.
