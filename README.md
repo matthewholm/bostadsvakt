@@ -127,12 +127,7 @@ separat privat repo, [bostadsvakt-data](https://github.com/matthewholm/bostadsva
 som varje workflow checkar ut vid sidan av sig själv (`data-repo/`, en
 fine-grained token scopad bara till det repot — `DATA_REPO_TOKEN`).
 
-**Kontrollpanelen** — en webbsida med reglage för alla kriterier, hostad i
-Home Assistant. Koden ligger i [bostadsvakt-panel](https://github.com/matthewholm/bostadsvakt-panel),
-och behöver peka mot `bostadsvakt-data` för att läsa/skriva rätt fil numera
-— uppdatera kopian enligt panel-repots README.
-
-**Eller via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. Funkar även i GitHub-appen i mobilen. Resultatet visas i körningens sammanfattning, och sparas till `bostadsvakt-data`.
+**Via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. Funkar även i GitHub-appen i mobilen. Resultatet visas i körningens sammanfattning, och sparas till `bostadsvakt-data`.
 
 Allt sparas i `bostadsvakt-data/config.json`, som du förstås också kan redigera direkt i det repot:
 
@@ -152,6 +147,29 @@ Allt sparas i `bostadsvakt-data/config.json`, som du förstås också kan redige
   "notiser": { "endastTräffar": true } // false = notis om ALLA nya, träffar märks med 🎯
 }
 ```
+
+## Se husen i Alva
+
+Varje körning bygger också `bostadsvakt-data/data/sida.json` — husflödet i
+den generiska `{ sections: [{ titel, rader }] }`-form Alvas "anpassade
+sidor" förstår (se Alva-repots `docs/FEATURES.md`). Bostadsvakt vet inget om
+Alva, och Alva vet inget om bostadsvakt — kopplingen är bara en URL och en
+token, ifylld en gång i Alvas UI.
+
+1. Skapa en fine-grained personal access token på
+   [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens),
+   scopad bara till `bostadsvakt-data`, med **Contents: read** (inget annat).
+2. I Alva: **Inställningar → System → Kopplingar → Ny koppling**.
+   - Namn: valfritt, t.ex. "Bostäder"
+   - URL: `https://raw.githubusercontent.com/matthewholm/bostadsvakt-data/main/data/sida.json`
+   - Token: den du skapade i steg 1
+3. Lägg till ett kort av sorten **"Extern källa"** i en egen vy, och välj kopplingen.
+
+`raw.githubusercontent.com` fungerar direkt mot ett privat repo när tokenen
+skickas som `Authorization: Bearer` — till skillnad från GitHub:s vanliga
+Contents-API (`api.github.com/repos/.../contents/...`), som svarar med filen
+base64-kodad i ett JSON-svep i stället för filens egna innehåll rakt av, vilket
+Alvas generiska koppling inte packar upp.
 
 ## Testa direkt på GitHub
 

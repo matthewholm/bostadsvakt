@@ -58,6 +58,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             node ../src/merge.js /tmp/mina-traffar.json /tmp/mina-seen.json /tmp/mina-slutpriser.json
+            node ../src/sida.js
             git add data/
             if git diff --cached --quiet; then echo "Inget nytt att spara."; exit 0; fi
             git commit -m "Uppdatera sedda annonser och träffar"
