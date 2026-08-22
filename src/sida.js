@@ -29,7 +29,7 @@ const post = (hus) => {
     [hus.typ, kr(hus.pris), hus.rum && `${hus.rum} rum`, hus.boarea && `${hus.boarea} m²`]
       .filter(Boolean)
       .join(" · "),
-    hus.uppfyller ? `🎯 Träff · ${hus.poang} poäng` : `${hus.poang} poäng`,
+    hus.poang != null && (hus.uppfyller ? `🎯 Träff · ${hus.poang} poäng` : `${hus.poang} poäng`),
     hus.prisSankning && `Prissänkt: ${kr(hus.prisSankning.fran)} → ${kr(hus.prisSankning.till)}`,
     // Hus som fanns innan sektioner-fältet byggdes (se index.js) har ännu
     // inte fått det ifyllt av en färsk körning – då faller vi tillbaka på
