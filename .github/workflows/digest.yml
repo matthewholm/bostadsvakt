@@ -20,6 +20,4 @@ jobs:
       - name: Skicka sammanfattning
         env:
           HA_WEBHOOK_URL: ${{ secrets.HA_WEBHOOK_URL }}
-          ALVA_URL: ${{ secrets.ALVA_URL }}
-          ALVA_INGEST_TOKEN: ${{ secrets.ALVA_INGEST_TOKEN }}
         run: node src/digest.js

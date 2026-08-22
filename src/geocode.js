@@ -192,7 +192,7 @@ async function photon({ adress, ort, forvantadKommun }) {
 // ---- Publikt API ----
 
 // Geokodar en adress. `ort` är annonsens egen ort (t.ex. "Väddö"), `omraden`
-// är de bevakade områdena (från kriterierna i Alva) som sista utväg.
+// är de bevakade områdena ur config.json som sista utväg.
 //
 // Ordningen är medvetet snävast först: annonsens egen ort ger rätt kommun
 // direkt, medan de breda områdena ("Uppsala", "Norrtälje") bara ska användas

@@ -76,7 +76,7 @@ export async function hamtaMailAnnonser(areas = []) {
     if (a.lat != null) continue;
     if (!a.adress) continue;
     // Snävast ledtråd först: annonsens kommun, sedan dess ort, sist de breda
-    // bevakningsområdena ur kriterierna i Alva.
+    // bevakningsområdena ur config.json.
     const pos = await geokoda(a.gatuadress || a.adress, {
       ort: a.ort,
       // Annonsens egen kommun låser uppslaget till rätt kommun – de breda

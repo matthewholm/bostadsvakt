@@ -1,24 +1,27 @@
 // Daglig hälsokoll: en kort sammanfattning så man vet att bevakningen
 // faktiskt är igång. Uteblir den här notisen en dag är det ett tydligt
 // tecken på att något gått sönder (t.ex. utgången token eller stoppad Action).
-//
-// Läser flödet från Alva numera, inte en lokal fil – samma skäl som
-// index.js. Sparade favoriter räknas inte längre här: de bor i Alvas egna
-// listor bakom en session, som den här nyckeln (avsiktligt) inte öppnar.
+import { readFileSync } from "node:fs";
 import { notis } from "./notify.js";
-import { harAlva, hamtaTillstand } from "./alva.js";
 
-if (!harAlva()) {
-  console.error("ALVA_URL och ALVA_INGEST_TOKEN är inte satta. Se README.md.");
-  process.exit(1);
+function las(path, fallback) {
+  try {
+    return JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), "utf8"));
+  } catch {
+    return fallback;
+  }
 }
-const { hus } = await hamtaTillstand();
-const antalTraffar = hus.filter((t) => t.uppfyller).length;
+
+const traffar = las("data/traffar.json", []);
+const listor = las("data/listor.json", { favoriter: {} });
+const antalTraffar = traffar.filter((t) => t.uppfyller).length;
+const antalSparade = Object.keys(listor.favoriter || {}).length;
 
 await notis({
   titel: "Bostadsvakt: allt igång",
   meddelande: [
-    `${hus.length} hus i flödet just nu, varav ${antalTraffar} träffar.`,
+    `${traffar.length} hus i flödet just nu, varav ${antalTraffar} träffar.`,
+    `${antalSparade} sparade favoriter.`,
     "Bevakningen körde utan fel senaste dygnet.",
   ].join("\n"),
   prioritet: 2,
