@@ -1,19 +1,22 @@
-// Analyserar en enskild annons-länk (klistras in i kontrollpanelen):
+// Analyserar en enskild annons-länk (körs från Actions-fliken med en url):
 // tolkar adressen, mäter pendling/natur och pushar resultatet – oavsett
 // om huset uppfyller kraven eller inte, med tydlig lista på vad som brister.
-import { readFileSync } from "node:fs";
 import { tolkaHemnetSlug } from "./mailsource.js";
 import { geokoda } from "./geocode.js";
 import { narmasteHallplatser, resaTillStockholm, harResrobotNyckel } from "./transit.js";
 import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
-import { lasTraffar, sparaTraffar } from "./matches.js";
 import { beraknaPoang } from "./score.js";
 import { skrivBedomning } from "./ai.js";
 import { lasSlutpriser, jamforPris } from "./slutpriser.js";
+import { harAlva, hamtaTillstand, skickaHus } from "./alva.js";
 
-const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
-const k = config.kriterier;
+if (!harAlva()) {
+  console.error("ALVA_URL och ALVA_INGEST_TOKEN är inte satta. Se README.md.");
+  process.exit(1);
+}
+const { config: hamtadConfig, hus: tidigareSparadeHus } = await hamtaTillstand();
+const k = hamtadConfig.kriterier;
 const fmtTid = (min) => (min >= 60 ? `${Math.floor(min / 60)} tim ${min % 60} min` : `${min} min`);
 
 const url = (process.env.ANNONS_URL ?? "").trim();
@@ -142,7 +145,7 @@ await notis({
 });
 
 // Spara i galleriet (manuellt analyserade hus hamnar också bland Bostäder)
-const lagrade = new Map(lasTraffar().map((t) => [t.id, t]));
+const lagrade = new Map(tidigareSparadeHus.map((t) => [t.id, t]));
 const tidigareHus = lagrade.get(a.id);
 const prisSankning =
   a.pris != null && tidigareHus?.pris != null && a.pris < tidigareHus.pris
@@ -173,6 +176,10 @@ lagrade.set(a.id, {
   poang,
   aiOmdome,
 });
-sparaTraffar([...lagrade.values()]);
+await skickaHus(
+  [...lagrade.values()]
+    .sort((a, b) => (b.tidpunkt ?? "").localeCompare(a.tidpunkt ?? ""))
+    .slice(0, 100),
+);
 
 console.log(traff ? "TRÄFF – notis skickad, sparad i galleriet." : `Brister: ${brister.join("; ")} – notis skickad, sparad i galleriet.`);

@@ -36,11 +36,14 @@ jobs:
           RESROBOT_API_KEY: ${{ secrets.RESROBOT_API_KEY }}
           HA_WEBHOOK_URL: ${{ secrets.HA_WEBHOOK_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ALVA_URL: ${{ secrets.ALVA_URL }}
+          ALVA_INGEST_TOKEN: ${{ secrets.ALVA_INGEST_TOKEN }}
         run: node src/index.js
 
-      - name: Spara sedda annonser och träffar
+      # Husflödet postas till Alva inne i index.js numera, inte här. Bara
+      # sedda annonser och slutpriser är kvar att committa – se merge.js.
+      - name: Spara sedda annonser och slutpriser
         run: |
-          cp data/traffar.json /tmp/mina-traffar.json
           cp data/seen.json /tmp/mina-seen.json
           cp data/slutpriser.json /tmp/mina-slutpriser.json
           git config user.name "bostadsvakt-bot"
@@ -48,10 +51,10 @@ jobs:
           for i in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            node src/merge.js /tmp/mina-traffar.json /tmp/mina-seen.json /tmp/mina-slutpriser.json
+            node src/merge.js /tmp/mina-seen.json /tmp/mina-slutpriser.json
             git add data/
             if git diff --cached --quiet; then echo "Inget nytt att spara."; exit 0; fi
-            git commit -m "Uppdatera sedda annonser och träffar"
+            git commit -m "Uppdatera sedda annonser och slutpriser"
             if git push; then echo "Sparat."; exit 0; fi
             echo "Push avvisad (försök $i) – hämtar senaste och slår ihop igen."
             sleep 3

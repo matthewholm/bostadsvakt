@@ -1,7 +1,6 @@
 // Bostadsvakt – letar nya bostäder via Booli-API och/eller bevakningsmejl
 // (Hemnet + Booli), kollar pendling (ResRobot), vatten/skog/grannar
 // (OpenStreetMap) och skickar push-notiser via en Home Assistant-webhook.
-import { readFileSync } from "node:fs";
 import { harBooliNycklar, sokAnnonser } from "./booli.js";
 import { harImap, hamtaMailAnnonser } from "./mailsource.js";
 import { narmasteHallplatser, resaTillStockholm, resaTillAndraMalet, turtathet, bilTillHallplats, harResrobotNyckel } from "./transit.js";
@@ -10,24 +9,40 @@ import { myndighetForKommun, visaKommun } from "./lan.js";
 import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
 import { lasSedda, sparaSedda } from "./state.js";
-import { lasTraffar, sparaTraffar } from "./matches.js";
 import { beraknaMatchning } from "./score.js";
 import { skrivBedomning } from "./ai.js";
 import { lasSlutpriser, sparaSlutpriser, jamforPris } from "./slutpriser.js";
 import { berikaFranBooli, arBooliAnnons } from "./annonsberikning.js";
 import { harRad } from "./ekonomi.js";
+import { harAlva, hamtaTillstand, skickaHus } from "./alva.js";
 
-const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
-const k = config.kriterier;
 const paus = (ms) => new Promise((r) => setTimeout(r, ms));
 const normTyp = (s) => (s ?? "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
 const fmtTid = (min) => (min >= 60 ? `${Math.floor(min / 60)} tim ${min % 60} min` : `${min} min`);
 
-// Testläge: kör hela kedjan på ett låtsashus utan att behöva några nycklar.
+// Testläge: kör hela kedjan på ett låtsashus utan att behöva några nycklar,
+// och utan att behöva Alva – körs alltid lokalt mot ett låtsashus.
 if (process.argv.includes("--test")) {
   await korTest();
   process.exit(0);
 }
+
+if (!harAlva()) {
+  console.error(
+    "ALVA_URL och ALVA_INGEST_TOKEN är inte satta. Bevakningen läser sina " +
+      "kriterier och sitt hushåll därifrån numera, och postar husen dit " +
+      "istället för att committa dem hit. Skapa en nyckel i Alva under " +
+      "Inställningar → bostadsvaktens nycklar. Se README.md för detaljer."
+  );
+  process.exit(1);
+}
+
+// `config` är hela dokumentet (searches + kriterier + notiser), plus
+// hushall ihopslaget precis som config.json alltid haft det – bara att
+// källan är Alvas databas nu, inte en fil i det här repot.
+const { config: hamtadConfig, hushall, hus: tidigareSparadeHus } = await hamtaTillstand();
+const config = { ...hamtadConfig, hushall };
+const k = config.kriterier;
 
 if (!harBooliNycklar() && !harImap()) {
   console.error(
@@ -60,7 +75,7 @@ if (harResrobotNyckel() && k.andraMal?.adress) {
 
 const sedda = lasSedda();
 const forstaKorning = sedda.size === 0;
-const traffarLagrade = new Map(lasTraffar().map((t) => [t.id, t]));
+const traffarLagrade = new Map(tidigareSparadeHus.map((t) => [t.id, t]));
 let nya = 0;
 let traffar = 0;
 
@@ -352,8 +367,8 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
   if (arBooliAnnons(a)) await paus(800);
 
   // Har hushållet råd? "okänt" (inte ett gissat nej) tills hushall är ifyllt
-  // i config.json – se ekonomi.js. Räknas på alla hus, oavsett läge, eftersom
-  // den bara behöver pris och boarea.
+  // i Alva under Bostäder → Ekonomi – se ekonomi.js. Räknas på alla hus,
+  // oavsett läge, eftersom den bara behöver pris och boarea.
   const ekonomi = harRad({
     pris: a.pris,
     boarea: a.boarea,
@@ -411,8 +426,11 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
    * framtida grupper – nya eller omdöpta sektioner är en ändring här, aldrig
    * där husen visas.
    *
-   * pendling/omgivning finns kvar som egna fält också (bostadsvakt-panel
-   * läser dem direkt och ska inte behöva följa med i den här omläggningen).
+   * pendling/omgivning finns kvar som egna fält också, ofarligt redundant
+   * med sektioner ovan. De begärde en gång bostadsvakt-panelens direkta
+   * filläsning av data/traffar.json, som är borta nu (huset postas till
+   * Alva i stället) — kvar bara för att inte vara en anledning i sig att
+   * städa undan dem just nu.
    */
   const grupp = (titel, rader) => (rader.length ? { titel, rader } : null);
   const sektioner = [
@@ -643,8 +661,15 @@ if (traffarLagrade.size !== antalForeStad) {
 }
 
 sparaSedda(sedda);
-sparaTraffar([...traffarLagrade.values()]);
-console.log(`  Sparade ${traffarLagrade.size} hus till data/traffar.json.`);
+// Samma gräns (100, nyast först) traffar.json alltid haft – ett tak, inte en
+// egenskap hos Alva, som gärna kunde hålla fler. `dold`-fältet är inte med
+// längre: Alva håller dolda hus i en egen tabell, kopplad på id, inte i
+// husets egen JSON.
+const husAttSpara = [...traffarLagrade.values()]
+  .sort((a, b) => (b.tidpunkt ?? "").localeCompare(a.tidpunkt ?? ""))
+  .slice(0, 100);
+await skickaHus(husAttSpara);
+console.log(`  Sparade ${husAttSpara.length} hus till Alva.`);
 
 if (forstaKorning) {
   console.log(`\nFörsta körningen: ${nya} befintliga annonser sparade som "sedda". Från och med nästa körning får du notiser om allt nytt.`);

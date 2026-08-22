@@ -1,6 +1,7 @@
 name: Analysera annons
 
-# Startas från kontrollpanelen (eller Actions-fliken) med en Hemnet-länk.
+# Startas från Actions-fliken med en Hemnet-länk. Den gamla kontrollpanelen
+# hade ett formulär för det här; Alva har inget ännu.
 # Kör hela analysen på det huset och pushar resultatet till mobilen.
 on:
   workflow_dispatch:
@@ -10,10 +11,12 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: write
-
+# Ingen contents: write behövs längre – husflödet postas till Alva, inget
+# committas till repot av den här workflowen.
 concurrency:
+  # Delad grupp med Bostadsvakt: två körningar som båda läser Alvas feed
+  # och sedan skriver tillbaka sin egen fullständiga vy får aldrig gå
+  # samtidigt, annars vinner den som råkar bli klar sist och tystar den andra.
   group: bostadsvakt
   cancel-in-progress: false
 
@@ -36,22 +39,6 @@ jobs:
           RESROBOT_API_KEY: ${{ secrets.RESROBOT_API_KEY }}
           HA_WEBHOOK_URL: ${{ secrets.HA_WEBHOOK_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ALVA_URL: ${{ secrets.ALVA_URL }}
+          ALVA_INGEST_TOKEN: ${{ secrets.ALVA_INGEST_TOKEN }}
         run: node src/analysera.js
-
-      - name: Spara i galleriet
-        run: |
-          cp data/traffar.json /tmp/mina-traffar.json
-          git config user.name "bostadsvakt-bot"
-          git config user.email "actions@users.noreply.github.com"
-          for i in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-            node src/merge.js /tmp/mina-traffar.json
-            git add data/
-            if git diff --cached --quiet; then echo "Inget nytt att spara."; exit 0; fi
-            git commit -m "Spara analyserad bostad i galleriet"
-            if git push; then echo "Sparat."; exit 0; fi
-            echo "Push avvisad (försök $i) – hämtar senaste och slår ihop igen."
-            sleep 3
-          done
-          echo "Kunde inte spara efter flera försök."; exit 1

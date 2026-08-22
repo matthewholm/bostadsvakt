@@ -10,7 +10,7 @@ Körs gratis i GitHub Actions var 30:e minut – din dator behöver inte vara p�
 
 ## Så funkar den
 
-1. **Booli API** – hämtar nya villaannonser för sökområdena i [config.json](config.json).
+1. **Booli API** – hämtar nya villaannonser för sökområdena, satta under Bostäder → Sökkriterier i Alva.
 2. **Geokodning med kommunkontroll** (Nominatim/Photon) – översätter adressen till koordinater och **verifierar att träffen ligger i rätt kommun** innan den accepteras. Utan verifiering kan en gata med samma namn i fel del av landet accepteras blint. Se [src/geocode.js](src/geocode.js).
 3. **Trafiklab ResRobot** – närmaste hållplats, närmaste tågstation, restid till Stockholm C och **turtäthet** (hur många avgångar det faktiskt går en vanlig vardag). Täcker hela Sverige, alltså både SL och UL, med samma nyckel.
 4. **SL Transport-API** (ingen nyckel) – används där huset ligger i SL-område, för att namnge hållplatser/linjer exakt och upptäcka **anropsstyrd närtrafik som måste bokas i förväg**.
@@ -40,7 +40,7 @@ Poängen är ett viktat snitt där **saknade mått viktas bort proportionellt** 
 | Avstånd till hållplats | 10 % | 0 m |
 | Turtäthet | 8 % | 40 avgångar/vardag (≈ var 20:e minut) |
 
-Uträkningen sparas per hus (`matchning` i `data/traffar.json`) med varje faktors mätvärde, delpoäng, vikt och bidrag – det är den panelen visar under "Varför 72/100?". Ett hus där bussen måste förbeställas får noll på turtäthet, även om restiden råkar se bra ut.
+Uträkningen sparas per hus (`matchning`, postat till Alva efter varje körning) med varje faktors mätvärde, delpoäng, vikt och bidrag – det är den Alva visar under "Varför 72/100?". Ett hus där bussen måste förbeställas får noll på turtäthet, även om restiden råkar se bra ut.
 
 ### När bussen måste förbeställas
 
@@ -85,7 +85,7 @@ Låt Hemnet och Booli göra sökjobbet – appen läser deras bevakningsmejl i e
 2. **Skapa bevakningar** på [hemnet.se](https://www.hemnet.se) och/eller [booli.se](https://www.booli.se) för dina områden och hustyper, med mejlutskick ("direkt" hellre än dagligen) till den adressen.
 3. **Lägg in secrets**: `IMAP_USER` (mejladressen) och `IMAP_PASSWORD` (app-lösenordet). Annan mejlleverantör än Gmail? Sätt även `IMAP_HOST`.
 
-Appen läser bara olästa mejl från Hemnet/Booli och markerar dem som lästa efteråt. Sätt bevakningarna brett (bara område + hustyp) och låt appen sköta finfiltret – då kan du ändra kriterier i panelen utan att röra Hemnet/Booli.
+Appen läser bara olästa mejl från Hemnet/Booli och markerar dem som lästa efteråt. Sätt bevakningarna brett (bara område + hustyp) och låt appen sköta finfiltret – då kan du ändra kriterier i Alva utan att röra Hemnet/Booli.
 
 ### B. Boolis API
 
@@ -101,16 +101,19 @@ Kräver `BOOLI_CALLER_ID` + `BOOLI_PRIVATE_KEY`. Boolis publika API-sida är ned
 | **Trafiklab** | Skapa gratiskonto på [developer.trafiklab.se](https://developer.trafiklab.se), skapa ett projekt och lägg till API:t **ResRobot v2.1**. Samma nyckel täcker både SL och UL – ingen separat UL-nyckel behövs. | `RESROBOT_API_KEY` |
 | **SL Transport** | Inget att göra – API:t är öppet och kräver ingen nyckel. | – |
 | **Home Assistant** | En webhook-automation i din HA som skickar vidare till mobilappen/apparna (se "Notiser till flera personer" nedan). | `HA_WEBHOOK_URL` |
+| **Alva** | Kriterier, hushållets ekonomi och husflödet lever i Alva numera, inte i det här repot. Skapa en nyckel i Alva under Inställningar → bostadsvaktens nycklar. | `ALVA_URL` (Alvas adress, nåbar från internet), `ALVA_INGEST_TOKEN` |
 
 ### 2. Lägg in hemligheterna i GitHub
 
-Gå till repot → **Settings → Secrets and variables → Actions → New repository secret** och lägg in de fyra hemligheterna ovan. Eller via terminalen:
+Gå till repot → **Settings → Secrets and variables → Actions → New repository secret** och lägg in hemligheterna ovan. Eller via terminalen:
 
 ```
 gh secret set BOOLI_CALLER_ID
 gh secret set BOOLI_PRIVATE_KEY
 gh secret set RESROBOT_API_KEY
 gh secret set HA_WEBHOOK_URL
+gh secret set ALVA_URL
+gh secret set ALVA_INGEST_TOKEN
 ```
 
 ### 3. Starta
@@ -119,28 +122,12 @@ Gå till fliken **Actions** i repot, välj workflowen **Bostadsvakt** och klicka
 
 ## Anpassa kriterierna
 
-**Allra enklast: kontrollpanelen** — en webbsida med reglage för alla kriterier, knappar för att köra test/bevakning och lista över senaste körningarna. Den hostas i Home Assistant: `https://home.houseofholm.se/local/bostadsvakt.html`. Logga in med en fine-grained GitHub-token (Contents + Actions, read/write, endast detta repo). Koden ligger i [bostadsvakt-panel](https://github.com/matthewholm/bostadsvakt-panel) — uppdatera kopian med `wget` enligt panel-repots README.
+Allt sköts i Alva numera, under **Bostäder**:
 
-**Eller via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. Funkar även i GitHub-appen i mobilen. Resultatet visas i körningens sammanfattning.
+- **Sökkriterier** – områden, pris, rum, ytor, avstånd, natur. Sparas direkt, gäller från nästa körning.
+- **Ekonomi** – hushållets inkomst, kontantinsats och nuvarande bostad, för har-råd-bedömningen (se [Ekonomi](#ekonomi-har-hushållet-råd) nedan). Tomma fält betyder "inte ifyllt", inte noll.
 
-Allt sparas i [config.json](config.json), som du förstås också kan redigera direkt:
-
-```jsonc
-{
-  "searches": [ { "namn": "Uppsala", "q": "Uppsala" } ],   // lägg till fler områden
-  "kriterier": {
-    "objectType": "villa",
-    "maxPris": null,                  // t.ex. 5000000
-    "maxAvståndHållplatsM": 1000,     // max meter till närmaste hållplats
-    "maxAvståndVattenM": 1500,
-    "maxAvståndSkogM": 500,
-    "kravVattenEllerSkog": true,      // minst ett av vatten/skog måste uppfyllas
-    "maxGrannarInom300m": 15,
-    "andraMal": { "namn": "Kontoret", "adress": "Sveavägen 1, Stockholm" } // valfritt, bara informativt – inget hårt filter
-  },
-  "notiser": { "endastTräffar": true } // false = notis om ALLA nya, träffar märks med 🎯
-}
-```
+Det gamla sättet — en kontrollpanel som pratade med GitHub direkt, och en **Ändra inställningar**-workflow som skrev om `config.json` och committade det — är borta. Kriterierna bor i Alvas egen databas nu, av samma skäl som husflödet: `config.json` var på väg att bära en hel familjs inkomst och sparande, committat till git var 30:e minut, i ett repo som en dag ska bli publikt.
 
 ## Testa direkt på GitHub
 
@@ -167,7 +154,11 @@ BOOLI_CALLER_ID=...
 BOOLI_PRIVATE_KEY=...
 RESROBOT_API_KEY=...
 HA_WEBHOOK_URL=...
+ALVA_URL=...
+ALVA_INGEST_TOKEN=...
 ```
+
+`ALVA_URL`/`ALVA_INGEST_TOKEN` krävs för en riktig körning (`npm start` utan `--test`) — kriterierna och husflödet läses och skrivs mot Alva, så Alva måste vara nåbar från datorn du kör ifrån. `npm start -- --test` klarar sig utan alla nycklar, Alva inräknat — se nästa avsnitt.
 
 Kör sedan:
 
@@ -176,6 +167,18 @@ npm start
 ```
 
 Utan `HA_WEBHOOK_URL` skrivs notiserna bara ut i terminalen (torrkörning).
+
+## Ekonomi: har hushållet råd?
+
+Med hushållets ekonomi ifylld i Alva (Bostäder → Ekonomi) räknar varje hus ut, och visar i notisen under en egen EKONOMI-rubrik:
+
+- **Lagfart** (1,5 % av köpeskillingen + 825 kr) och **pantbrev** (2 % av lånebeloppet + 375 kr) — antar att hela lånet behöver nytt pantbrev, det säkra antagandet när annonsen inte säger vad som redan finns på fastigheten.
+- **Amorteringskrav** enligt reformen 2026-04-01: 2 %/år över 70 % belåningsgrad, 1 %/år mellan 50–70 %, inget krav därunder. Den tidigare skärpningen för hög skuldkvot är borttagen.
+- **Månadskostnad**, både till dagens ränta och **stresstestad** till en högre kalkylränta — samma sak en bank faktiskt testar mot, inte bara vad det kostar idag.
+- **Driftskostnad**, hämtad från Boolis egen annonssida när huset kommer därifrån (byggår följer med på köpet). Hemnet-hus får ingen sådan berikning — Hemnets sida ligger bakom en Cloudflare-utmaning som gör den till aktiv bot-blockering, inte bara ett villkor att respektera. Saknas en riktig siffra används en schablon (kr/m²/år, satt i Ekonomi-fliken).
+- **En har-råd-bedömning**, i stil med en banks KALP: nettoinkomst minus boendekostnad (stresstestad), övriga lån och Konsumentverkets 2026-referensvärden för mat/kläder/hygien/fritid. `"okänt"`, aldrig ett gissat nej, tills hushållet fyllt i sin ekonomi.
+
+Se [src/ekonomi.js](src/ekonomi.js) för hela uträkningen, källbelagd rad för rad.
 
 ## Bra att veta
 

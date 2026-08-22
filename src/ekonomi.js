@@ -14,7 +14,7 @@
 //   ANTAGANDEN, satta av hushållet: ränta, kalkylränta, driftskostnad-
 //   schablon. Inget regelverk sätter dessa – bankerna har egna, opublicerade
 //   modeller. Default-värdena nedan är rimliga utgångspunkter (se README),
-//   inte fakta, och ska kunna bytas ut i config.json under "hushall.antagande"
+//   inte fakta, och ska kunna bytas ut under Bostäder → Ekonomi i Alva
 //   utan att koden ändras.
 //
 // Allt är opt-in: utan hushall.nettoinkomstManad och hushall.kontantinsats
@@ -176,12 +176,12 @@ export function saljaNuvarandeBostad({ varde, kvarstaendeLan = 0, maklarkostnadP
 /**
  * Toppnivå: har hushållet råd med det här huset? Returnerar "okant" (inte
  * ett gissat ja/nej) så länge hushall.nettoinkomstManad eller
- * hushall.kontantinsatsTillgangligt saknas i config.json – exakt samma
- * princip som naturkollen: hellre erkänna att data saknas än låtsas veta.
+ * hushall.kontantinsatsTillgangligt saknas i Alva – exakt samma princip
+ * som naturkollen: hellre erkänna att data saknas än låtsas veta.
  */
 export function harRad({ pris, boarea, driftskostnadKandKrManad, hushall }) {
   if (hushall?.nettoinkomstManad == null || hushall?.kontantinsatsTillgangligt == null) {
-    return { verdikt: "okant", forklaring: 'Hushållsekonomi är inte ifylld i config.json under "hushall".' };
+    return { verdikt: "okant", forklaring: "Hushållsekonomi är inte ifylld i Alva under Bostäder → Ekonomi." };
   }
   const kostnad = totalkostnad({
     pris,
