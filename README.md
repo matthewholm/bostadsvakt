@@ -151,10 +151,13 @@ Allt sparas i `bostadsvakt-data/config.json`, som du förstås också kan redige
 ## Se husen i Alva
 
 Varje körning bygger också `bostadsvakt-data/data/sida.json` — husflödet i
-den generiska `{ sections: [{ titel, rader }] }`-form Alvas "anpassade
-sidor" förstår (se Alva-repots `docs/FEATURES.md`). Bostadsvakt vet inget om
-Alva, och Alva vet inget om bostadsvakt — kopplingen är bara en URL och en
-token, ifylld en gång i Alvas UI.
+den generiska `{ items: [{ id, title, image, url, rader }] }`-form Alvas
+"anpassade sidor" förstår (se Alva-repots `docs/FEATURES.md`). id/bild/url
+är egna fält så att en favoritmarkering eller en anteckning i Alva
+överlever att huset försvinner ur flödet. Bostadsvakt vet inget om Alva,
+och Alva vet inget om bostadsvakt — kopplingen är bara en URL och en token,
+ifylld en gång i Alvas UI, och Alva ritar upp bilder, hjärta-för-att-spara
+och dölj-knapp precis som för vilken annan koppling som helst.
 
 1. Skapa en fine-grained personal access token på
    [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens),
