@@ -1,0 +1,51 @@
+name: Engångsbackfyll — mäklarkalkyl
+
+# Manuellt jobb, inte schemalagt: fyller i byggår/mäklarkalkyl på hus som
+# redan finns i data-repo:t men kom in innan de fälten fanns (se
+# src/backfyll-maklarkalkyl.js). Körs en gång, sedan tas den här filen och
+# skriptet bort igen.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  backfyll:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/checkout@v5
+        with:
+          repository: matthewholm/bostadsvakt-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data-repo
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Berika befintliga hus
+        run: node src/backfyll-maklarkalkyl.js data-repo/data/traffar.json /tmp/mina-traffar.json
+
+      - name: Spara i bostadsvakt-data
+        working-directory: data-repo
+        run: |
+          git config user.name "bostadsvakt-bot"
+          git config user.email "actions@users.noreply.github.com"
+          for i in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            node ../src/merge.js /tmp/mina-traffar.json
+            node ../src/sida.js
+            git add data/
+            if git diff --cached --quiet; then echo "Inget nytt att spara."; exit 0; fi
+            git commit -m "Fyll i mäklarkalkyl och byggår på befintliga hus"
+            if git push; then echo "Sparat."; exit 0; fi
+            echo "Push avvisad (försök $i) – hämtar senaste och slår ihop igen."
+            sleep 3
+          done
+          echo "Kunde inte spara efter flera försök."; exit 1
