@@ -37,13 +37,18 @@ const post = (hus) => {
       .join(" · "),
     hus.poang != null && (hus.uppfyller ? `Träff · ${hus.poang} poäng` : `${hus.poang} poäng`),
     hus.prisSankning && `Prissänkt: ${kr(hus.prisSankning.fran)} → ${kr(hus.prisSankning.till)}`,
+    // AI-omdömet läggs direkt efter poängen, inte sist av allt – det är
+    // en syntes av matchning, ekonomi, pendling och omgivning på en gång
+    // (se index.js:skrivBedomning), alltså slutsatsen, medan sektionerna
+    // nedanför är underlaget den byggde på. En läsare vill veta vad AI:n
+    // tycker innan hen bläddrar igenom bevisen, inte efter.
+    hus.aiOmdome && ["", "AI-OMDÖME", hus.aiOmdome],
     // Hus som fanns innan sektioner-fältet byggdes (se index.js) har ännu
     // inte fått det ifyllt av en färsk körning – då faller vi tillbaka på
     // de äldre platta fälten i stället för att tappa raderna helt.
     ...(hus.sektioner
       ? hus.sektioner.flatMap((s) => sektion(s.titel, s.rader))
       : [...sektion("PENDLING", hus.pendling), ...sektion("OMGIVNING", hus.omgivning), ...sektion("EKONOMI", hus.ekonomiRader)]),
-    hus.aiOmdome && ["", "AI-OMDÖME", hus.aiOmdome],
   ]
     .flat()
     // Filtrerar bort de rader som var villkorliga (false, inte bara "" eller
