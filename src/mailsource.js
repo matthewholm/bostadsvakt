@@ -27,6 +27,7 @@ export async function hamtaMailAnnonser(areas = [], { importAvsandare = [] } = {
 
   const annonser = new Map();
   const slutpriser = [];
+  let importMejl = 0;
   const tillatnaImport = new Set(
     [...importAvsandare, process.env.IMAP_USER].filter(Boolean).map((s) => String(s).trim().toLowerCase())
   );
@@ -42,6 +43,7 @@ export async function hamtaMailAnnonser(areas = [], { importAvsandare = [] } = {
       const avsandarAdress = (mail.from?.value?.[0]?.address ?? "").toLowerCase();
       if (tillatnaImport.has(avsandarAdress)) {
         const lista = tolkaInklistradSida(mail.html || "", mail.text || "");
+        importMejl++;
         console.log(`  Import från ${avsandarAdress}: ${lista.length} annonser i "${mail.subject ?? ""}".`);
         for (const a of lista) annonser.set(a.id, { ...a, import: true });
         await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
@@ -109,7 +111,7 @@ export async function hamtaMailAnnonser(areas = [], { importAvsandare = [] } = {
       if (!a.ort) a.ort = pos.kommunNamn;
     }
   }
-  return { annonser: [...annonser.values()], slutpriser };
+  return { annonser: [...annonser.values()], slutpriser, importMejl };
 }
 
 // Hittar Hemnet-/Booli-annonser i mejlets HTML. Parar ihop annons-id (ur

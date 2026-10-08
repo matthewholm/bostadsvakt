@@ -95,10 +95,11 @@ if (harBooliNycklar()) {
 if (harImap()) {
   console.log("\nLäser bevakningsmejl (Hemnet/Booli)...");
   try {
-    const { annonser: lista, slutpriser: nyaSlutpriser } = await hamtaMailAnnonser(
+    const { annonser: lista, slutpriser: nyaSlutpriser, importMejl } = await hamtaMailAnnonser(
       config.searches.map((s) => s.namn),
       { importAvsandare: config.importAvsandare ?? [] }
     );
+    importerade.mejl = importMejl;
     console.log(`  ${lista.length} annonser i mejlen, ${nyaSlutpriser.length} nya slutpriser.`);
     annonser.push(...lista);
     if (nyaSlutpriser.length) sparaSlutpriser([...lasSlutpriser(), ...nyaSlutpriser]);
@@ -737,7 +738,15 @@ sparaTraffar([...traffarLagrade.values()]);
 console.log(`  Sparade ${traffarLagrade.size} hus till data/traffar.json.`);
 
 const antalInklistrade = annonser.filter((a) => a.import).length;
-if (antalInklistrade) {
+if (importerade.mejl && !antalInklistrade) {
+  await notis({
+    titel: "Import: inga annonser hittades",
+    meddelande:
+      "Mejlet kom fram men innehöll inga Hemnet-annonser i Stockholms eller Uppsala län. " +
+      "Markera hela resultatsidan på hemnet.se (Ctrl+A, Ctrl+C) och klistra in den i mejlet – " +
+      "inte bara adressfältet.",
+  });
+} else if (antalInklistrade) {
   const topp = [...importerade.traffar].sort((x, y) => (y.poang ?? 0) - (x.poang ?? 0));
   await notis({
     titel: `Import klar: ${importerade.sparade} hus sparade`,
