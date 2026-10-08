@@ -96,6 +96,15 @@ export const ORTER = {
   // Vallentuna/Österåker – gränsar mot Norrtälje, också SL
   vallentuna: "vallentuna", kargarde: "vallentuna",
   akersberga: "osteraker", osteraker: "osteraker",
+
+  // Haninge/Tyresö – södra bevakningen (Västerhaninge, Vendelsö, Trollbäcken)
+  vasterhaninge: "haninge", vendelso: "haninge", handen: "haninge",
+  jordbro: "haninge", brandbergen: "haninge", tungelsta: "haninge",
+  dalaro: "haninge", musko: "haninge", orno: "haninge", galo: "haninge",
+  krigslida: "haninge", vega: "haninge", haninge: "haninge",
+  osterhaninge: "haninge", "arsta havsbad": "haninge", gudo: "haninge",
+  trollbacken: "tyreso", "tyreso strand": "tyreso", bollmora: "tyreso",
+  oringe: "tyreso", brevik: "tyreso", raksta: "tyreso", tyreso: "tyreso",
 };
 
 // Slår ihop å/ä/ö och skiljetecken så "Norrtälje", "NORRTALJE" och
@@ -147,6 +156,7 @@ const VISNING = {
   habo: "Håbo", heby: "Heby", alvkarleby: "Älvkarleby",
   vallentuna: "Vallentuna", osteraker: "Österåker", sigtuna: "Sigtuna",
   vaxholm: "Vaxholm", varmdo: "Värmdö", stockholm: "Stockholm",
+  haninge: "Haninge", tyreso: "Tyresö",
 };
 export function visaKommun(kommun) {
   const n = norm(kommun);
