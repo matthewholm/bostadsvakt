@@ -1,9 +1,9 @@
 // Bostadsvakt – letar nya bostäder via Booli-API och/eller bevakningsmejl
 // (Hemnet + Booli), kollar pendling (ResRobot), vatten/skog/grannar
 // (OpenStreetMap) och skickar push-notiser via en Home Assistant-webhook.
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { harBooliNycklar, sokAnnonser } from "./booli.js";
-import { harImap, hamtaMailAnnonser } from "./mailsource.js";
+import { harImap, hamtaMailAnnonser, tolkaInklistradSida, geokodaAnnonser } from "./mailsource.js";
 import { narmasteHallplatser, resaTillStockholm, resaTillAndraMalet, turtathet, bilTillHallplats, harResrobotNyckel } from "./transit.js";
 import { geokoda, slaUppPlats } from "./geocode.js";
 import { myndighetForKommun, visaKommun } from "./lan.js";
@@ -106,6 +106,18 @@ if (harImap()) {
   } catch (err) {
     console.error(`  Kunde inte läsa inkorgen: ${err.message}`);
   }
+}
+
+// Samma inklistrade Hemnet-söksida, men lagd som fil i bostadsvakt-data
+// (data/import.html) istället för i ett mejl. Workflowen tar bort filen när
+// körningen sparat, så den läses bara en gång.
+const importFil = new URL("../data-repo/data/import.html", import.meta.url);
+if (existsSync(importFil)) {
+  const lista = tolkaInklistradSida(readFileSync(importFil, "utf8"));
+  console.log(`\nImportfil: ${lista.length} annonser.`);
+  await geokodaAnnonser(lista, config.searches.map((s) => s.namn));
+  annonser.push(...lista.map((a) => ({ ...a, import: true })));
+  importerade.mejl = (importerade.mejl ?? 0) + 1;
 }
 
 // ---- Slå ihop dubbletter mellan källor ----

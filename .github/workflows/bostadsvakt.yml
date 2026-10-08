@@ -47,6 +47,7 @@ jobs:
           IMAP_PASSWORD: ${{ secrets.IMAP_PASSWORD }}
           RESROBOT_API_KEY: ${{ secrets.RESROBOT_API_KEY }}
           HA_WEBHOOK_URL: ${{ secrets.HA_WEBHOOK_URL }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: node src/index.js
 
@@ -56,6 +57,9 @@ jobs:
           cp data/traffar.json /tmp/mina-traffar.json
           cp data/seen.json /tmp/mina-seen.json
           cp data/slutpriser.json /tmp/mina-slutpriser.json
+          # En importfil (se index.js) läses en gång – den här körningen har
+          # läst den, så den tas bort när resultatet sparas.
+          if [ -f data/import.html ]; then touch /tmp/import-last; fi
           git config user.name "bostadsvakt-bot"
           git config user.email "actions@users.noreply.github.com"
           for i in 1 2 3 4 5; do
@@ -63,6 +67,7 @@ jobs:
             git reset --hard origin/main
             node ../src/merge.js /tmp/mina-traffar.json /tmp/mina-seen.json /tmp/mina-slutpriser.json
             node ../src/sida.js
+            if [ -f /tmp/import-last ]; then git rm -q --ignore-unmatch data/import.html; fi
             git add data/
             if git diff --cached --quiet; then echo "Inget nytt att spara."; exit 0; fi
             git commit -m "Uppdatera sedda annonser och träffar"
@@ -76,6 +81,7 @@ jobs:
         if: failure()
         env:
           HA_WEBHOOK_URL: ${{ secrets.HA_WEBHOOK_URL }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
           if [ -n "${HA_WEBHOOK_URL:-}" ]; then
             curl -s -X POST "$HA_WEBHOOK_URL" \

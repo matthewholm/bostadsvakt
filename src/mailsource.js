@@ -88,7 +88,12 @@ export async function hamtaMailAnnonser(areas = [], { importAvsandare = [] } = {
   // utan ort som "sista chansen". Båda gjorde att första bästa träff i hela
   // Sverige accepterades blint, vilket placerade Roslagen-hus i Uppsala och
   // ett hus ända nere vid Trosa.
-  for (const a of annonser.values()) {
+  await geokodaAnnonser(annonser.values(), areas);
+  return { annonser: [...annonser.values()], slutpriser, importMejl };
+}
+
+export async function geokodaAnnonser(annonser, areas = []) {
+  for (const a of annonser) {
     if (a.lat != null) continue;
     if (!a.adress) continue;
     // Snävast ledtråd först: annonsens kommun, sedan dess ort, sist de breda
@@ -111,7 +116,6 @@ export async function hamtaMailAnnonser(areas = [], { importAvsandare = [] } = {
       if (!a.ort) a.ort = pos.kommunNamn;
     }
   }
-  return { annonser: [...annonser.values()], slutpriser, importMejl };
 }
 
 // Hittar Hemnet-/Booli-annonser i mejlets HTML. Parar ihop annons-id (ur
