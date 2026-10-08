@@ -69,6 +69,9 @@ const forstaKorning = sedda.size === 0;
 const traffarLagrade = new Map(lasTraffar().map((t) => [t.id, t]));
 let nya = 0;
 let traffar = 0;
+// Inklistrade Hemnet-söksidor (se tolkaInklistradSida) kan ge 30 hus på en
+// gång – de sparas tyst och sammanfattas i EN notis efteråt.
+const importerade = { sparade: 0, traffar: [] };
 
 // ---- Samla annonser från alla källor ----
 const annonser = [];
@@ -92,7 +95,10 @@ if (harBooliNycklar()) {
 if (harImap()) {
   console.log("\nLäser bevakningsmejl (Hemnet/Booli)...");
   try {
-    const { annonser: lista, slutpriser: nyaSlutpriser } = await hamtaMailAnnonser(config.searches.map((s) => s.namn));
+    const { annonser: lista, slutpriser: nyaSlutpriser } = await hamtaMailAnnonser(
+      config.searches.map((s) => s.namn),
+      { importAvsandare: config.importAvsandare ?? [] }
+    );
     console.log(`  ${lista.length} annonser i mejlen, ${nyaSlutpriser.length} nya slutpriser.`);
     annonser.push(...lista);
     if (nyaSlutpriser.length) sparaSlutpriser([...lasSlutpriser(), ...nyaSlutpriser]);
@@ -564,6 +570,13 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
     return;
   }
 
+  if (a.import) {
+    importerade.sparade++;
+    if (uppfyller) importerade.traffar.push({ adress: a.adress, omrade: a.omrade || a.ort, poang });
+    console.log(`  Importerad ${uppfyller ? "träff" : "bostad"} sparad utan notis [${a.id}]: ${a.adress}`);
+    return;
+  }
+
   // Notis: bara för träffar (eller för alla om så valts), aldrig på första
   // körningen eller för Hemnets egna rekommendationer ("Hemnet Max") – de
   // är inte nya sökträffar, bara tips, och ska synas i galleriet utan att
@@ -722,6 +735,21 @@ if (traffarLagrade.size !== antalForeStad) {
 sparaSedda(sedda);
 sparaTraffar([...traffarLagrade.values()]);
 console.log(`  Sparade ${traffarLagrade.size} hus till data/traffar.json.`);
+
+const antalInklistrade = annonser.filter((a) => a.import).length;
+if (antalInklistrade) {
+  const topp = [...importerade.traffar].sort((x, y) => (y.poang ?? 0) - (x.poang ?? 0));
+  await notis({
+    titel: `Import klar: ${importerade.sparade} hus sparade`,
+    meddelande: [
+      `${antalInklistrade} annonser hittades i det inklistrade. ${importerade.sparade} nya sparades i flödet – ` +
+        "resten var redan kända eller föll på hustyp, pris, rum, yta eller restid.",
+      topp.length ? "" : "Inget av husen uppfyller alla krav.",
+      ...(topp.length ? [`${topp.length} uppfyller alla krav:`, ...topp.map((t) =>
+        `${t.adress}${t.omrade ? `, ${t.omrade}` : ""}${t.poang != null ? ` · ${t.poang}/100` : ""}`)] : []),
+    ].filter(Boolean).join("\n"),
+  });
+}
 
 if (forstaKorning) {
   console.log(`\nFörsta körningen: ${nya} befintliga annonser sparade som "sedda". Från och med nästa körning får du notiser om allt nytt.`);

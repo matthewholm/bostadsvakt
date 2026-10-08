@@ -89,6 +89,8 @@ Låt Hemnet och Booli göra sökjobbet – appen läser deras bevakningsmejl i e
 
 Appen läser bara olästa mejl från Hemnet/Booli och markerar dem som lästa efteråt. Sätt bevakningarna brett (bara område + hustyp) och låt appen sköta finfiltret – då kan du ändra kriterier i panelen utan att röra Hemnet/Booli.
 
+**Hämta det som redan ligger ute.** Bevakningsmejlen innehåller bara *nya* annonser. För att få in dagens utbud: gör sökningen på hemnet.se, markera hela resultatsidan (Ctrl+A, Ctrl+C), klistra in den i ett nytt mejl till inkorgsadressen och skicka. Nästa körning läser ut varje sökträff (adress, pris, boarea, rum, tomt), hoppar över betalda placeringar och hus utanför Stockholms/Uppsala län, analyserar resten som vanligt och skickar en sammanfattande notis istället för en per hus. Har sökningen flera sidor skickar du en per sida. Bara mejl från inkorgens egen adress och adresserna i `importAvsandare` i `config.json` tolkas så.
+
 ### B. Boolis API
 
 Kräver `BOOLI_CALLER_ID` + `BOOLI_PRIVATE_KEY`. Boolis publika API-sida är nedtagen, men API:t svarar fortfarande – mejla `api@booli.se` och be om en nyckel för privat, icke-kommersiellt bruk.

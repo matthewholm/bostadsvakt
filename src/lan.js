@@ -126,6 +126,8 @@ export function myndighetForKommun(kommun) {
   const n = norm(kommun);
   if (!n) return null;
   if (KOMMUNER[n]) return KOMMUNER[n];
+  // Hemnet skriver genitiv: "Stockholms kommun", "Upplands Väsbys kommun".
+  if (n.endsWith("s") && KOMMUNER[n.slice(0, -1)]) return KOMMUNER[n.slice(0, -1)];
   // "Norrtälje Municipality"/"Norrtälje kommun" har redan städats av norm(),
   // men Nominatim kan också svara med sammansatta namn – ta första ordet.
   const forsta = n.split(" ")[0];
@@ -138,6 +140,7 @@ export function kommunForOrt(ort) {
   if (!n) return null;
   if (ORTER[n]) return ORTER[n];
   if (KOMMUNER[n]) return n; // orten ÄR en kommun, t.ex. "Norrtälje"
+  if (n.endsWith("s") && KOMMUNER[n.slice(0, -1)]) return n.slice(0, -1); // "Stockholms"
   const forsta = n.split(" ")[0];
   return ORTER[forsta] ?? (KOMMUNER[forsta] ? forsta : null);
 }

@@ -4,12 +4,15 @@
 // texten flera varv, och adress/bild plockas ur mejlets HTML.
 // Kräver IMAP_USER + IMAP_PASSWORD (och IMAP_HOST om inte Gmail).
 import { geokoda } from "./geocode.js";
+import { myndighetForOrt } from "./lan.js";
 
 export function harImap() {
   return Boolean(process.env.IMAP_USER && process.env.IMAP_PASSWORD);
 }
 
-export async function hamtaMailAnnonser(areas = []) {
+// importAvsandare: adresser vars mejl tolkas som en inklistrad Hemnet-söksida
+// (se tolkaInklistradSida). Inkorgens egen adress räknas alltid dit.
+export async function hamtaMailAnnonser(areas = [], { importAvsandare = [] } = {}) {
   const { ImapFlow } = await import("imapflow");
   const { simpleParser } = await import("mailparser");
   const { tolkaSlutpriserMail } = await import("./slutpriser.js");
@@ -24,6 +27,9 @@ export async function hamtaMailAnnonser(areas = []) {
 
   const annonser = new Map();
   const slutpriser = [];
+  const tillatnaImport = new Set(
+    [...importAvsandare, process.env.IMAP_USER].filter(Boolean).map((s) => String(s).trim().toLowerCase())
+  );
   await client.connect();
   const lock = await client.getMailboxLock("INBOX");
   try {
@@ -33,6 +39,14 @@ export async function hamtaMailAnnonser(areas = []) {
       const { content } = await client.download(String(uid), undefined, { uid: true });
       const mail = await simpleParser(content);
       const avsandare = (mail.from?.text ?? "").toLowerCase();
+      const avsandarAdress = (mail.from?.value?.[0]?.address ?? "").toLowerCase();
+      if (tillatnaImport.has(avsandarAdress)) {
+        const lista = tolkaInklistradSida(mail.html || "", mail.text || "");
+        console.log(`  Import från ${avsandarAdress}: ${lista.length} annonser i "${mail.subject ?? ""}".`);
+        for (const a of lista) annonser.set(a.id, { ...a, import: true });
+        await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
+        continue;
+      }
       if (!/hemnet|booli/.test(avsandare)) continue;
 
       // Slutpriser-bevakning: sålda hus används bara för prisstatistik,
@@ -209,6 +223,103 @@ export function laddaDetaljer(html) {
     detaljer.set(normAdr(adress), { typ: m[1].toLowerCase(), ort: m[2].trim(), pris, boarea, rum, tomtarea });
   }
   return detaljer;
+}
+
+// Hemnets söksida inklistrad i ett mejl (Ctrl+A, Ctrl+C på hemnet.se, klistra
+// in i ett nytt mejl till bevakningsadressen). Bevakningsmejlen innehåller
+// bara NYA annonser – det här är vägen in för det som redan låg ute när
+// bevakningen startade. Varje sökträff är ett enda <a> runt hela kortet:
+//   Stallgränd 4 / Degerhamn, Mörbylånga kommun / 1 875 000 kr /
+//   121 + 56 m² / 5 rum / 1 056 m² tomt
+// Betalda placeringar ("Betald placering", "Mäklartipset") ligger i samma
+// lista men följer inte sökningen – de är lägenheter i Bromma och fjällstugor
+// i Hemavan – så de hoppas över, liksom allt utanför de bevakade länen.
+export function tolkaInklistradSida(html, text = "") {
+  const kort = new Map();
+  const lankRe = /<a\b[^>]*?href=["'][^"']*?\/bostad\/([a-z0-9-]+-\d{6,})[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi;
+  for (const [, slug, inre] of (html || "").matchAll(lankRe)) {
+    const id = slug.match(/-(\d{6,})$/)[1];
+    const e = kort.get(id) ?? { slug, rader: [], bild: null, betald: false };
+    const rader = tillRader(inre);
+    if (rader.some((r) => /^(betald placering|mäklartipset)$/i.test(r))) e.betald = true;
+    e.rader.push(...rader);
+    const img = inre.match(/<img\b[^>]*?\ssrc=["'](https?:\/\/[^"']+)["']/i)?.[1];
+    if (img && arHusbild(img) && !e.bild) e.bild = httpsBild(img.replace(/&amp;/g, "&"));
+    kort.set(id, e);
+  }
+  // Klienter som bara skickar ren text: länkarna står då som
+  // "... ( https://www.hemnet.se/bostad/... )". Bara sluggen att gå på.
+  if (!kort.size) {
+    for (const [, slug] of (text || "").matchAll(/hemnet\.se\/bostad\/([a-z0-9-]+-\d{6,})/gi)) {
+      const id = slug.match(/-(\d{6,})$/)[1];
+      if (!kort.has(id)) kort.set(id, { slug, rader: [], bild: null, betald: false });
+    }
+  }
+
+  const resultat = [];
+  for (const e of kort.values()) {
+    if (e.betald) continue;
+    const a = tolkaHemnetSlug(e.slug);
+    if (!a) continue;
+    const d = tolkaKortrader(e.rader);
+    // Kortet stavar med å/ä/ö ("Vinäs"), sluggen inte ("vinas") – kortets
+    // version ger bättre geokodning när den finns.
+    if (d.gata) { a.adress = d.gata; a.gatuadress = d.gata; }
+    if (d.ort) a.ort = d.ort;
+    if (d.kommunText) a.kommunText = d.kommunText;
+    a.pris = d.pris; a.boarea = d.boarea; a.rum = d.rum ?? a.rum; a.tomtarea = d.tomtarea;
+    a.bild = e.bild;
+    if (!myndighetForOrt(a.kommunText || a.ort)) continue;
+    resultat.push(a);
+  }
+  return resultat;
+}
+
+// Ett Hemnet-korts synliga rader → fälten. Raderna kommer i fast form men
+// med valfria inslag (visningstid, "Premium", "Balkong") runt omkring, så
+// varje fält känns igen på sitt eget mönster istället för sin position.
+export function tolkaKortrader(raRader) {
+  const d = { gata: null, ort: null, kommunText: null, pris: null, boarea: null, rum: null, tomtarea: null };
+  const tal = (s) => Number(s.replace(/\s/g, "").replace(",", "."));
+  // Boarea + biarea ligger i separata element ("121" | "+" | "56 m²") och
+  // blir separata rader – sätt ihop dem, annars läses biarean som boarea.
+  const rader = [];
+  for (let i = 0; i < raRader.length; i++) {
+    if (/^\d[\d\s]*(?:,\d+)?$/.test(raRader[i]) && raRader[i + 1] === "+" && /m²$/.test(raRader[i + 2] ?? "")) {
+      rader.push(`${raRader[i]} + ${raRader[i + 2]}`);
+      i += 2;
+    } else rader.push(raRader[i]);
+  }
+  // Mellan adressen och orten ligger en visuellt dold hustypsrad ("Villa").
+  const typRad = /^(villa|radhus|parhus|kedjehus|fritidsboende|fritidshus|gård|gårdar|tomt|lägenhet|bostadsrätt|övrigt)$/i;
+  for (let i = 0; i < rader.length; i++) {
+    const r = rader[i];
+    const ortM = r.match(/^(.+),\s*(.+?)\s+kommun$/i);
+    if (ortM && !d.ort) {
+      d.ort = ortM[1].trim();
+      d.kommunText = ortM[2].trim();
+      let j = i - 1;
+      while (j >= 0 && typRad.test(rader[j])) j--;
+      if (j >= 0 && rader[j].length <= 60) d.gata = rader[j];
+      continue;
+    }
+    let m;
+    if (d.pris == null && (m = r.match(/^(\d[\d\s]*)\s*kr$/i))) d.pris = tal(m[1]);
+    else if (d.tomtarea == null && (m = r.match(/^(\d[\d\s]*)\s*m²\s*tomt$/i))) d.tomtarea = tal(m[1]);
+    else if (d.boarea == null && (m = r.match(/^(\d[\d\s]*(?:,\d+)?)(?:\s*\+\s*\d[\d\s]*)?\s*m²$/i))) d.boarea = tal(m[1]);
+    else if (d.rum == null && (m = r.match(/^(\d+(?:[,.]\d)?)\s*rum$/i))) d.rum = tal(m[1]);
+  }
+  return d;
+}
+
+function tillRader(html) {
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<[^>]+>/g, "\n")
+    .replace(/&nbsp;|&#160;|&#xa0;/gi, " ").replace(/&sup2;|&#178;|&#xb2;/gi, "²")
+    .replace(/&amp;/gi, "&").replace(/&#8211;|&ndash;/gi, "–")
+    .replace(/[​-‍﻿]/g, "").replace(/ /g, " ")
+    .split("\n").map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
 }
 
 // Hemnets adress-slug bär på mycket: "villa-6rum-rimbo-norrtalje-kommun-vallbyvagen-10-21398433"

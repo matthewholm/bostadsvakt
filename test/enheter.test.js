@@ -607,3 +607,59 @@ test("pantbrevsavgift utan siffror (mäklaren har ingen information) blir null, 
   assert.equal(r.lagfart, null);
   assert.equal(r.amorteringManad, null);
 });
+
+// ---------------------------------------------------------------------------
+// Inklistrad Hemnet-söksida (import via mejl)
+// ---------------------------------------------------------------------------
+
+import { tolkaInklistradSida } from "../src/mailsource.js";
+
+// Samma form som det Chrome lägger i urklipp efter Ctrl+A på en Hemnet-
+// söksida: ett <a> runt hela kortet, raderna i egna element.
+const kort = (slug, rader, bild = "") =>
+  `<a href="https://www.hemnet.se/bostad/${slug}"><div>${bild ? `<img src="${bild}">` : ""}` +
+  rader.map((r) => `<span>${r}</span>`).join("") + "</div></a>";
+
+const sida =
+  "<div><h1>Villor till salu</h1>" +
+  kort("lagenhet-1rum-bromma-beckomberga-stockholms-kommun-follingbogatan-22-21609089",
+    ["Betald placering", "Follingbogatan 22", "Bromma - Beckomberga", "1 395 000 kr", "1 rum", "Mäklartipset"]) +
+  kort("villa-5rum-vasterhaninge-haninge-kommun-solvagen-3-21900001",
+    ["Sön 11 okt kl 12:00", "Solvägen 3", "Villa", "Västerhaninge, Haninge kommun", "3 750 000 kr",
+     "121", "+", "56 m&sup2;", "5 rum", "1 056 m² tomt", "Premium"],
+    "https://bilder.hemnet.se/images/abc.jpg?quality=70&amp;width=2048") +
+  kort("villa-4rum-trollbacken-tyreso-kommun-granvagen-8-21900002",
+    ["Granvägen 8", "Villa", "Trollbäcken, Tyresö kommun", "3 995 000 kr", "98&nbsp;m²", "4 rum"]) +
+  kort("villa-3rum-hagersten-stockholms-kommun-ekgatan-1-21900004",
+    ["Ekgatan 1", "Villa", "Hägersten, Stockholms kommun", "3 900 000 kr", "100 m²", "3 rum"]) +
+  kort("villa-2rum-degerhamn-morbylanga-kommun-stallgrand-4-21889613",
+    ["Stallgränd 4", "Degerhamn, Mörbylånga kommun", "1 875 000 kr", "41 m²", "2 rum"]) +
+  "</div>";
+
+test("Inklistrad Hemnet-söksida: betalda placeringar och hus utanför länen hoppas över", () => {
+  const lista = tolkaInklistradSida(sida);
+  assert.deepEqual(lista.map((a) => a.id), ["hemnet-21900001", "hemnet-21900002", "hemnet-21900004"]);
+});
+
+test("Inklistrad Hemnet-söksida: kortets fält läses ut med å/ä/ö", () => {
+  const [a, b] = tolkaInklistradSida(sida);
+  assert.equal(a.adress, "Solvägen 3");
+  assert.equal(a.ort, "Västerhaninge");
+  assert.equal(a.kommunText, "Haninge");
+  assert.equal(a.pris, 3750000);
+  assert.equal(a.boarea, 121);
+  assert.equal(a.rum, 5);
+  assert.equal(a.tomtarea, 1056);
+  assert.equal(a.typ, "villa");
+  assert.equal(a.bild, "https://bilder.hemnet.se/images/abc.jpg?quality=70&width=2048");
+  assert.equal(b.ort, "Trollbäcken");
+  assert.equal(b.kommunText, "Tyresö");
+  assert.equal(b.tomtarea, null);
+});
+
+test("Inklistrad Hemnet-söksida: ren text med bara länkar fungerar också", () => {
+  const lista = tolkaInklistradSida("", "Kolla ( https://www.hemnet.se/bostad/villa-5rum-vendelso-haninge-kommun-ekvagen-2-21900003 )");
+  assert.equal(lista.length, 1);
+  assert.equal(lista[0].id, "hemnet-21900003");
+  assert.equal(lista[0].kommunText, "Haninge");
+});
