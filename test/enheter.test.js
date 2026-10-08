@@ -629,7 +629,7 @@ const sida =
      "121", "+", "56 m&sup2;", "5 rum", "1 056 m² tomt", "Premium"],
     "https://bilder.hemnet.se/images/abc.jpg?quality=70&amp;width=2048") +
   kort("villa-4rum-trollbacken-tyreso-kommun-granvagen-8-21900002",
-    ["Granvägen 8", "Villa", "Trollbäcken, Tyresö kommun", "3 995 000 kr", "98&nbsp;m²", "4 rum"]) +
+    ["Granvägen 8", "Villa", "Trollbäcken, Tyresö kommun", "3 995 000 kr", "98", "+ 12 m²", "4 rum"]) +
   kort("villa-3rum-hagersten-stockholms-kommun-ekgatan-1-21900004",
     ["Ekgatan 1", "Villa", "Hägersten, Stockholms kommun", "3 900 000 kr", "100 m²", "3 rum"]) +
   kort("villa-2rum-degerhamn-morbylanga-kommun-stallgrand-4-21889613",
@@ -654,6 +654,7 @@ test("Inklistrad Hemnet-söksida: kortets fält läses ut med å/ä/ö", () => {
   assert.equal(a.bild, "https://bilder.hemnet.se/images/abc.jpg?quality=70&width=2048");
   assert.equal(b.ort, "Trollbäcken");
   assert.equal(b.kommunText, "Tyresö");
+  assert.equal(b.boarea, 98);
   assert.equal(b.tomtarea, null);
 });
 

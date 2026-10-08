@@ -291,9 +291,14 @@ export function tolkaKortrader(raRader) {
   // blir separata rader – sätt ihop dem, annars läses biarean som boarea.
   const rader = [];
   for (let i = 0; i < raRader.length; i++) {
-    if (/^\d[\d\s]*(?:,\d+)?$/.test(raRader[i]) && raRader[i + 1] === "+" && /m²$/.test(raRader[i + 2] ?? "")) {
+    const tal = /^\d[\d\s]*(?:,\d+)?$/.test(raRader[i]);
+    if (tal && raRader[i + 1] === "+" && /m²$/.test(raRader[i + 2] ?? "")) {
       rader.push(`${raRader[i]} + ${raRader[i + 2]}`);
       i += 2;
+    } else if (tal && /^\+\s*\d[\d\s]*\s*m²$/.test(raRader[i + 1] ?? "")) {
+      // ...eller "115" | "+ 32 m²", beroende på var sidan klipptes
+      rader.push(`${raRader[i]} ${raRader[i + 1]}`);
+      i += 1;
     } else rader.push(raRader[i]);
   }
   // Mellan adressen och orten ligger en visuellt dold hustypsrad ("Villa").
