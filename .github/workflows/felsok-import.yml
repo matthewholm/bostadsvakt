@@ -1,0 +1,29 @@
+name: Felsök import (tillfällig)
+on:
+  workflow_dispatch:
+    inputs:
+      markera:
+        description: "Markera importmejlen som olästa igen (ja/nej)"
+        default: "nej"
+jobs:
+  felsok:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: matthewholm/bostadsvakt-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data-repo
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - env:
+          IMAP_HOST: ${{ secrets.IMAP_HOST }}
+          IMAP_USER: ${{ secrets.IMAP_USER }}
+          IMAP_PASSWORD: ${{ secrets.IMAP_PASSWORD }}
+        run: node src/felsok-import.js ${{ inputs.markera == 'ja' && '--markera-olasta' || '' }}
