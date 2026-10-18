@@ -46,8 +46,12 @@ const kr = (n) => (n == null ? null : n.toLocaleString("sv-SE") + " kr");
 // rubrik.
 const sektion = (rubrik, rader) => (rader?.length ? ["", rubrik, ...rader] : []);
 
-const post = (hus) => {
-  const uppgifter = husuppgifter[hus.id] ?? {};
+const post = (sparat) => {
+  const uppgifter = husuppgifter[sparat.id] ?? {};
+  // Hus som kom in utan pris (Hemnets sammandragsmejl saknar det ibland)
+  // får priset ur en inklistrad annons, så att pris och kostnader går att
+  // räkna. Ett pris som redan finns på huset ändras aldrig härifrån.
+  const hus = sparat.pris == null && uppgifter.pris ? { ...sparat, pris: uppgifter.pris } : sparat;
   const byggar = uppgifter.byggar ?? hus.byggar;
   const kostnad = kostnadsbild(hus, uppgifter, config.hushall);
   const pris = prisbedomning({

@@ -770,6 +770,7 @@ console.log(`  Sparade ${traffarLagrade.size} hus till data/traffar.json.`);
 // körningen pågick, skrivas över av en gammal kopia.
 if (objektsidor.length) {
   const nyaUppgifter = {};
+  let prisIfyllt = false;
   let befintliga = {};
   try {
     befintliga = JSON.parse(readFileSync(new URL("../data-repo/data/husuppgifter.json", import.meta.url), "utf8"));
@@ -781,17 +782,24 @@ if (objektsidor.length) {
       await notis({
         titel: "Uppgifter kom in, men vilket hus?",
         meddelande: [
-          "Hittade uppgifter i mejlet men ingen adress som finns i flödet:",
+          "Hittade uppgifter i det inklistrade men ingen adress som finns i flödet:",
           ...kandaUppgifter(o.fakta),
           "",
-          "Skriv husets adress i ämnesraden, precis som den står i Bostäder, och skicka igen.",
+          "Välj huset i listan på klistra-in-sidan, eller skriv adressen i mejlets ämnesrad, och skicka igen.",
         ].join("\n"),
       });
       continue;
     }
     nyaUppgifter[hus.id] = { ...nyaUppgifter[hus.id], ...o.fakta, uppdaterad: new Date().toISOString() };
+    // Ett hus som saknade pris får det på själva posten också, så att
+    // sorteringen och prisfiltret (se merge.js) ser det. Ett känt pris rörs inte.
+    if (hus.pris == null && o.fakta.pris) {
+      traffarLagrade.set(hus.id, { ...hus, pris: o.fakta.pris });
+      prisIfyllt = true;
+    }
     const alla = { ...befintliga[hus.id], ...nyaUppgifter[hus.id] };
-    const kvar = fragorTillMaklaren(hus, alla, kostnadsbild(hus, alla, config.hushall)).length;
+    const medPris = traffarLagrade.get(hus.id);
+    const kvar = fragorTillMaklaren(medPris, alla, kostnadsbild(medPris, alla, config.hushall)).length;
     console.log(`  Uppgifter sparade för ${hus.adress} [${hus.id}]: ${Object.keys(o.fakta).join(", ")}.`);
     await notis({
       titel: `Uppgifter sparade: ${hus.adress}`,
@@ -800,6 +808,7 @@ if (objektsidor.length) {
       bild: hus.bild ?? undefined,
     });
   }
+  if (prisIfyllt) sparaTraffar([...traffarLagrade.values()]);
   if (Object.keys(nyaUppgifter).length) {
     writeFileSync(
       new URL("../data-repo/data/husuppgifter-nya.json", import.meta.url),

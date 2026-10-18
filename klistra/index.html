@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Klistra in annons</title>
+<meta name="robots" content="noindex">
+<style>
+  :root {
+    --bg: #f6f5f2; --yta: #ffffff; --text: #1d1d1b; --dov: #6b6a66; --kant: #dcdad4;
+    --accent: #2f5d50; --accent-text: #ffffff; --ok: #2f6b3a; --fel: #9b2c2c; --mark: #eef3f1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161716; --yta: #202220; --text: #ecebe7; --dov: #9d9c97; --kant: #3a3c39;
+      --accent: #7fb5a3; --accent-text: #10201b; --ok: #8fc79a; --fel: #e59a9a; --mark: #263330;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .ingress { color: var(--dov); margin: 0 0 24px; }
+  .kort { background: var(--yta); border: 1px solid var(--kant); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .hjalp { color: var(--dov); font-size: .875rem; margin: 6px 0 0; }
+  select, input, textarea {
+    width: 100%; font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--kant); border-radius: 8px; padding: 10px 12px;
+  }
+  textarea { min-height: 220px; resize: vertical; }
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 8px; padding: 12px 18px;
+    background: var(--accent); color: var(--accent-text); cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  button.sekundar { background: transparent; color: var(--accent); border: 1px solid var(--kant); padding: 8px 12px; }
+  .rad { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .rad input { flex: 1 1 220px; }
+  #forhand ul { margin: 8px 0 0; padding-left: 20px; }
+  #forhand .hus { background: var(--mark); border-radius: 8px; padding: 8px 12px; margin-top: 8px; }
+  .status { margin-top: 12px; font-weight: 600; }
+  .status.ok { color: var(--ok); }
+  .status.fel { color: var(--fel); }
+  details summary { cursor: pointer; font-weight: 600; }
+  details[open] summary { margin-bottom: 12px; }
+  ol { padding-left: 20px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Klistra in annons</h1>
+  <p class="ingress">Markera allt på Hemnets annons eller mäklarens objektbeskrivning (Ctrl+A, Ctrl+C) och klistra in här.
+    Pris, pantbrev, taxeringsvärde och övriga uppgifter läses in, och huset i Alva räknas om på några minuter.
+    En hel resultatsida från Hemnet går också bra: då läggs husen till i flödet.</p>
+
+  <details class="kort" id="installning">
+    <summary>Koppling till GitHub</summary>
+    <p class="hjalp" style="margin-top:0">Görs en gång per webbläsare. Tokenen sparas bara här, i den här webbläsaren.</p>
+    <ol class="hjalp">
+      <li>Skapa en <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a> på GitHub.</li>
+      <li>Repository access: välj <b>bostadsvakt</b> och <b>bostadsvakt-data</b>.</li>
+      <li>Permissions: <b>Contents: Read and write</b> och <b>Actions: Read and write</b>.</li>
+    </ol>
+    <div class="rad">
+      <input id="token" type="password" autocomplete="off" placeholder="github_pat_...">
+      <button id="sparaToken" class="sekundar" type="button">Spara</button>
+    </div>
+    <p class="hjalp" id="tokenStatus"></p>
+  </details>
+
+  <div class="kort">
+    <label for="hus">Vilket hus gäller det?</label>
+    <select id="hus"><option value="">Hitta huset automatiskt på adressen</option></select>
+    <p class="hjalp">Välj själv om sidan du klistrar in inte har husets adress, eller om fel hus hittas.</p>
+  </div>
+
+  <div class="kort">
+    <label for="text">Annonsen</label>
+    <textarea id="text" placeholder="Klistra in här"></textarea>
+    <div id="forhand" class="hjalp"></div>
+  </div>
+
+  <button id="skicka" type="button" disabled>Skicka</button>
+  <div id="status" class="status" role="status"></div>
+</main>
+
+<script type="module">
+import { tolkaObjektsida, htmlTillText, hittaHus } from "../src/objektsida.js";
+import { kandaUppgifter } from "../src/fragor.js";
+
+const DATA = "matthewholm/bostadsvakt-data";
+const VAKT = "matthewholm/bostadsvakt";
+const $ = (id) => document.getElementById(id);
+let html = null;   // sidans HTML när den klistrats in från en webbläsare
+let husLista = [];
+
+const lagra = {
+  las() { try { return localStorage.getItem("bostadsvakt-token") || ""; } catch { return ""; } },
+  spara(v) { try { localStorage.setItem("bostadsvakt-token", v); return true; } catch { return false; } },
+};
+const token = () => lagra.las();
+
+async function gh(sokvag, { method = "GET", body, raw = false } = {}) {
+  const res = await fetch(`https://api.github.com/${sokvag}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token()}`,
+      Accept: raw ? "application/vnd.github.raw+json" : "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+  if (!res.ok && res.status !== 404) {
+    const msg = await res.text().catch(() => "");
+    throw new Error(`GitHub svarade ${res.status}${msg ? ": " + msg.slice(0, 160) : ""}`);
+  }
+  if (res.status === 404) return null;
+  if (res.status === 204) return true;
+  return raw ? res.text() : res.json();
+}
+
+async function laddaHus() {
+  if (!token()) return;
+  try {
+    const text = await gh(`repos/${DATA}/contents/data/traffar.json`, { raw: true });
+    husLista = text ? JSON.parse(text) : [];
+    const val = $("hus");
+    val.length = 1;
+    for (const h of [...husLista].sort((a, b) => (a.adress ?? "").localeCompare(b.adress ?? "", "sv"))) {
+      const o = document.createElement("option");
+      o.value = h.id;
+      o.textContent = [h.adress, h.omrade].filter(Boolean).join(", ") + (h.pris == null ? " (pris saknas)" : "");
+      val.append(o);
+    }
+    $("tokenStatus").textContent = `Kopplad. ${husLista.length} hus i flödet.`;
+    forhandsvisa();
+  } catch (err) {
+    $("tokenStatus").textContent = `Kunde inte läsa husen: ${err.message}`;
+    $("installning").open = true;
+  }
+}
+
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const valtHus = () => husLista.find((h) => h.id === $("hus").value) ?? null;
+
+/** Det som skickas: sidans HTML om den finns, annars texten. Ett valt hus
+ *  läggs först, för motorn väljer den adress som står tidigast. */
+function innehall() {
+  const text = $("text").value;
+  if (!text.trim()) return null;
+  const hus = valtHus();
+  const huvud = hus ? `<p>${esc(hus.adress)}</p>\n` : "";
+  return huvud + (html ?? `<pre>${esc(text)}</pre>`);
+}
+
+function forhandsvisa() {
+  const ut = $("forhand");
+  ut.replaceChildren();
+  const text = $("text").value;
+  if (!text.trim()) { $("skicka").disabled = true; return; }
+  const ren = html ? htmlTillText(html) : text;
+  const fakta = tolkaObjektsida(ren);
+  const rader = kandaUppgifter(fakta);
+  const hus = valtHus() ?? hittaHus(ren, "", husLista);
+  const antalAnnonser = (html ?? text).match(/\/bostad\/[a-z0-9-]+-\d{6,}/gi)?.length ?? 0;
+
+  const p = document.createElement("p");
+  if (rader.length) {
+    p.textContent = `Hittade ${rader.length} uppgifter:`;
+    const ul = document.createElement("ul");
+    for (const r of rader) { const li = document.createElement("li"); li.textContent = r; ul.append(li); }
+    ut.append(p, ul);
+    const h = document.createElement("div");
+    h.className = "hus";
+    h.textContent = hus
+      ? `Sparas på ${[hus.adress, hus.omrade].filter(Boolean).join(", ")}`
+      : husLista.length ? "Hittade inget känt hus i texten. Välj huset i listan ovan." : "Huset avgörs när annonsen kommer fram.";
+    ut.append(h);
+  } else if (antalAnnonser) {
+    p.textContent = "Ser ut som en resultatsida. Husen läggs till i flödet.";
+    ut.append(p);
+  } else {
+    p.textContent = "Hittade inga uppgifter ännu. Har du markerat hela sidan?";
+    ut.append(p);
+  }
+  $("skicka").disabled = !token();
+  if (!token()) { $("installning").open = true; }
+}
+
+function visaStatus(text, ton = "") {
+  $("status").textContent = text;
+  $("status").className = `status ${ton}`;
+}
+
+async function skicka() {
+  const fil = innehall();
+  if (!fil) return;
+  $("skicka").disabled = true;
+  const start = new Date();
+  try {
+    visaStatus("Skickar...");
+    const finns = await gh(`repos/${DATA}/contents/data/import.html`);
+    const bytes = new TextEncoder().encode(fil);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    await gh(`repos/${DATA}/contents/data/import.html`, {
+      method: "PUT",
+      body: { message: "Inklistrad annons från klistra-in-sidan", content: btoa(bin), ...(finns?.sha ? { sha: finns.sha } : {}) },
+    });
+    await gh(`repos/${VAKT}/actions/workflows/bostadsvakt.yml/dispatches`, { method: "POST", body: { ref: "main" } });
+    visaStatus("Skickat. Bevakningen körs, det brukar ta två till tre minuter...");
+    await folj(start);
+  } catch (err) {
+    visaStatus(`Det gick inte: ${err.message}`, "fel");
+    $("skicka").disabled = false;
+  }
+}
+
+/** Följer körningen som startades, och visar till sist vad som sparades. */
+async function folj(start) {
+  const vanta = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < 60; i++) {
+    await vanta(10000);
+    const svar = await gh(`repos/${VAKT}/actions/workflows/bostadsvakt.yml/runs?event=workflow_dispatch&per_page=5`);
+    const korning = svar?.workflow_runs?.find((r) => new Date(r.created_at) >= new Date(start.getTime() - 60000));
+    if (!korning) continue;
+    if (korning.status !== "completed") { visaStatus("Bevakningen körs..."); continue; }
+    if (korning.conclusion !== "success") {
+      visaStatus(`Körningen misslyckades (${korning.conclusion}). Se ${korning.html_url}`, "fel");
+      $("skicka").disabled = false;
+      return;
+    }
+    const uppgifter = JSON.parse((await gh(`repos/${DATA}/contents/data/husuppgifter.json`, { raw: true })) ?? "{}");
+    const nya = Object.entries(uppgifter).filter(([, u]) => u.uppdaterad && new Date(u.uppdaterad) >= start);
+    if (nya.length) {
+      const namn = nya.map(([id]) => husLista.find((h) => h.id === id)?.adress ?? id).join(", ");
+      visaStatus(`Klart. Uppgifterna är sparade på ${namn} och syns i Alva nu.`, "ok");
+    } else {
+      visaStatus("Klart. Notisen i mobilen berättar vad som sparades.", "ok");
+    }
+    $("text").value = ""; html = null; forhandsvisa();
+    return;
+  }
+  visaStatus("Körningen dröjer. Notisen kommer när den är klar.", "");
+}
+
+$("text").addEventListener("paste", (e) => {
+  const h = e.clipboardData?.getData("text/html");
+  // Texten i rutan ersätts helt vid en inklistring i en tom ruta; annars
+  // blandas HTML från en sida med text som redan stod där, och då är texten
+  // det enda som stämmer.
+  html = h && !$("text").value.trim() ? h : null;
+  setTimeout(forhandsvisa, 0);
+});
+$("text").addEventListener("input", (e) => {
+  if (e.inputType !== "insertFromPaste") html = null;
+  forhandsvisa();
+});
+$("hus").addEventListener("change", forhandsvisa);
+$("skicka").addEventListener("click", skicka);
+$("sparaToken").addEventListener("click", () => {
+  const v = $("token").value.trim();
+  if (!v) return;
+  $("tokenStatus").textContent = lagra.spara(v) ? "Sparad. Läser husen..." : "Webbläsaren tillåter inte att tokenen sparas här.";
+  $("token").value = "";
+  laddaHus();
+});
+
+if (token()) laddaHus(); else $("installning").open = true;
+</script>
+</body>
+</html>

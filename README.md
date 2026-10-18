@@ -223,11 +223,21 @@ varje körning (så de finns för alla hus direkt, utan omanalys):
 
 ### Ge appen husets egna uppgifter
 
-Pantbrev, taxeringsvärde, driftkostnad, byggår, upplåtelseform,
+Pris, pantbrev, taxeringsvärde, driftkostnad, byggår, upplåtelseform,
 uppvärmning, vatten och avlopp och energiklass står i Hemnets annons och i
 mäklarens objektbeskrivning. Markera allt på sidan (Ctrl+A, Ctrl+C) och
-klistra in i ett mejl till inkorgen, från samma adress som importerna. Det
-går också att skriva mejlet själv:
+klistra in det på **[klistra-in-sidan](https://matthewholm.github.io/bostadsvakt/klistra/)**
+(`klistra/index.html`, via GitHub Pages). Sidan visar direkt vad den hittade,
+låter dig välja huset om adressen inte framgår, lägger texten som
+`data/import.html` i bostadsvakt-data, startar bevakningen och säger till när
+uppgifterna är sparade. Den kör samma tolk som motorn (`src/objektsida.js`),
+så förhandsvisningen och resultatet är samma sak. En hel resultatsida från
+Hemnet fungerar också där. Första gången behövs en fine-grained token med
+tillgång till `bostadsvakt` och `bostadsvakt-data`, **Contents: Read and
+write** och **Actions: Read and write**; den sparas bara i webbläsaren.
+
+Det går lika bra att klistra in i ett mejl till inkorgen, från samma adress
+som importerna, eller att skriva mejlet själv:
 
 ```
 Ämne: Häckgränd 8

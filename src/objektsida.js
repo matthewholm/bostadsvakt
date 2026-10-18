@@ -22,7 +22,9 @@ export function normaliseraText(text) {
     .replace(/[   ]/g, " ")
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{2,}/g, "\n");
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
 }
 
 export function htmlTillText(html) {
@@ -32,6 +34,7 @@ export function htmlTillText(html) {
     .replace(/<\/(p|div|li|tr|h\d|dt|dd|td|th|section|article)>/gi, "\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;|&#160;|&#xa0;/gi, " ")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
     .replace(/&amp;/g, "&").replace(/&sup2;|&#178;/gi, "²")
     .replace(/&aring;/g, "å").replace(/&auml;/g, "ä").replace(/&ouml;/g, "ö")
     .replace(/&Aring;/g, "Å").replace(/&Auml;/g, "Ä").replace(/&Ouml;/g, "Ö");
@@ -76,6 +79,14 @@ export function tolkaObjektsida(rå) {
   const u = {};
 
   Object.assign(u, tolkaPantbrev(text));
+
+  // Priset: med etikett hos mäklaren ("Utgångspris 2 495 000 kr"), utan hos
+  // Hemnet, där det står ensamt på en rad under adressen. Den första sådana
+  // raden är husets eget pris; liknande bostäder kommer längre ner.
+  const prisEtikett = text.match(new RegExp(`(?:utgångspris|begärt pris|accepterat pris|^pris)${SEP}${BELOPP}\\s*kr\\b(?!\\s*\\/)`, "im"));
+  const prisRad = text.match(new RegExp(`^${BELOPP}\\s*kr[ \\t]*$`, "m"));
+  const pris = prisEtikett ?? prisRad;
+  if (pris && tal(pris[1]) >= 300000) u.pris = tal(pris[1]);
 
   const tax = text.match(new RegExp(`taxeringsvärde(?:\\s*(?:år\\s*)?(?:19|20)\\d\\d)?${SEP}(?:totalt\\s*)?${BELOPP}\\s*kr`, "i"));
   if (tax && tal(tax[1]) >= 100000) u.taxeringsvarde = tal(tax[1]);

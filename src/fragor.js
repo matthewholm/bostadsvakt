@@ -85,6 +85,7 @@ export function fragorTillMaklaren(hus, uppgifter = {}, kostnad = null) {
 /** Det som redan är känt om huset ur husuppgifter.json, en uppgift per rad. */
 export function kandaUppgifter(u = {}) {
   return [
+    u.pris != null && `Pris i annonsen: ${kr(u.pris)}`,
     u.pantbrev != null &&
       `Pantbrev: ${u.pantbrevAntal ? `${u.pantbrevAntal} st, totalt ` : ""}${kr(u.pantbrev)}`,
     u.taxeringsvarde != null && `Taxeringsvärde: ${kr(u.taxeringsvarde)}`,

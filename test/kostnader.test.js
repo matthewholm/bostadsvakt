@@ -117,6 +117,13 @@ test("Hemnets objektsida: etikett och värde på var sin rad", () => {
   assert.equal(u.energiklass, "E");
 });
 
+test("priset: ensam rad hos Hemnet, med etikett hos mäklaren, aldrig pris per m²", () => {
+  const hemnet = "Meny\n  Häckgränd 8  \n  Tungelsta, Haninge kommun\n   2 495 000 kr  \nPris/m²\n17 448 kr/m²\nLiknande\n3 100 000 kr";
+  assert.equal(tolkaObjektsida(hemnet).pris, 2495000);
+  assert.equal(tolkaObjektsida("Utgångspris: 3 195 000 kr\nTaxeringsvärde 2 000 000 kr").pris, 3195000);
+  assert.equal(tolkaObjektsida("Pris/m²\n17 448 kr/m²").pris, undefined);
+});
+
 test("mäklarens objektbeskrivning: pantbrev, taxeringsvärde, VA och uppvärmning", () => {
   const text = [
     "Fastighetsbeteckning: Haninge Tungelsta 1:234",
