@@ -3,6 +3,8 @@
 // kriterierna och skriver 2–3 meningar på svenska om vad som är bra och vad
 // som är den svaga länken. Rent tillägg: saknas nyckel eller går anropet fel
 // skickas ingen bedömning – det avgör aldrig Träff eller poäng.
+import { pendlingsmal } from "./transit.js";
+
 const MODEL = "claude-haiku-4-5";
 
 export function harAnthropicNyckel() {
@@ -70,7 +72,7 @@ export async function skrivBedomning({
     `Krav att bedöma mot: max hållplatsavstånd ${k.maxAvståndHållplatsM} m, ` +
       `max vattenavstånd ${k.maxAvståndVattenM} m, max skogsavstånd ${k.maxAvståndSkogM} m, ` +
       `naturkrav "${k.kravNatur ?? "något"}", max grannar inom 300 m: ${k.maxGrannarInom300m}` +
-      (k.maxRestidStockholmMin ? `, max restid Stockholm C ${k.maxRestidStockholmMin} min` : "") +
+      (k.maxRestidStockholmMin ? `, max restid ${pendlingsmal(k).namn} ${k.maxRestidStockholmMin} min` : "") +
       (budgetKrav ? `, ${budgetKrav}` : "") + ".",
   ].filter(Boolean).join("\n");
 

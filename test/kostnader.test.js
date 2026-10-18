@@ -209,3 +209,22 @@ test("utan SCB-data och utan taxeringsvärde blir det bara budråden kvar, inget
   assert.ok(p.rader.length >= 2);
   assert.equal(bedom({ hus: { ...hus, pris: null }, marknad }), null);
 });
+
+// ---------------------------------------------------------------------------
+// Pendlingsmål
+// ---------------------------------------------------------------------------
+
+test("pendlingsmålet är Stockholm C tills config säger annat, och ett halvt ifyllt mål ignoreras", async () => {
+  const { pendlingsmal, PENDLINGSMAL_STANDARD } = await import("../src/transit.js");
+  assert.equal(pendlingsmal({}).namn, "Stockholm C");
+  assert.equal(pendlingsmal({ pendlingsmal: { namn: "Alvik" } }), PENDLINGSMAL_STANDARD);
+  const alvik = { namn: "Alvik", lat: 59.3334, lon: 17.9823 };
+  assert.equal(pendlingsmal({ pendlingsmal: alvik }), alvik);
+});
+
+test("matchningen säger vilket mål restiden gäller", async () => {
+  const { beraknaMatchning } = await import("../src/score.js");
+  const k = { maxRestidStockholmMin: 90, pendlingsmal: { namn: "Alvik", lat: 59.3334, lon: 17.9823 } };
+  const m = beraknaMatchning(k, { restidMin: 60 });
+  assert.ok(m.delar.some((d) => d.namn === "Restid till Alvik"));
+});

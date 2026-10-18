@@ -117,9 +117,34 @@ async function resaTillMal(lat, lon, { destId, destLat, destLon, franMyndighet, 
   };
 }
 
+/**
+ * Pendlingsmålet som restiden räknas mot, och som maxRestidStockholmMin i
+ * config gäller (nyckeln heter så av historiska skäl, se uppdatera-config.js).
+ * Sätts i config.kriterier.pendlingsmal som { namn, hallplatsId } eller
+ * { namn, lat, lon }. Ett mål med koordinater får gångbiten till målet
+ * inräknad av ResRobot, vilket är det man vill när målet är en arbetsplats
+ * och inte en station.
+ *
+ * Målet antas ligga i SL-land; "myndighet": "UL" i config säger annat. Det
+ * avgör bara biljettbeskedet, se lan.js.
+ */
+export const PENDLINGSMAL_STANDARD = { namn: "Stockholm C", hallplatsId: STOCKHOLM_C };
+
+export function pendlingsmal(k) {
+  const m = k?.pendlingsmal;
+  const giltigt = m?.namn && (m.hallplatsId || (Number.isFinite(m.lat) && Number.isFinite(m.lon)));
+  return giltigt ? m : PENDLINGSMAL_STANDARD;
+}
+
+export async function resaTillPendlingsmal(lat, lon, franMyndighet, mal = PENDLINGSMAL_STANDARD) {
+  const tillMyndighet = mal.myndighet === "UL" ? UL_MYND : SL_MYND;
+  const dest = mal.hallplatsId ? { destId: String(mal.hallplatsId) } : { destLat: mal.lat, destLon: mal.lon };
+  return resaTillMal(lat, lon, { ...dest, franMyndighet, tillMyndighet });
+}
+
+/** Det gamla namnet, för testläget som alltid mäter mot Stockholm C. */
 export async function resaTillStockholm(lat, lon, franMyndighet) {
-  // Stockholm C ligger i Stockholms län → alltid SL i andra änden.
-  return resaTillMal(lat, lon, { destId: STOCKHOLM_C, franMyndighet, tillMyndighet: SL_MYND });
+  return resaTillPendlingsmal(lat, lon, franMyndighet, PENDLINGSMAL_STANDARD);
 }
 
 // Fritt andra pendlingsmål (t.ex. en arbetsplats). `tillMyndighet` slås upp
@@ -339,7 +364,7 @@ const MIN_AVGANGAR = 6;
  *
  * Returnerar hållplatsen, körtiden dit, parkeringen och turtätheten därifrån.
  */
-export async function bilTillHallplats(lat, lon, myndighet, uteslut = new Set()) {
+export async function bilTillHallplats(lat, lon, myndighet, uteslut = new Set(), mal = PENDLINGSMAL_STANDARD) {
   if (!harResrobotNyckel()) return null;
 
   let data;
@@ -386,7 +411,7 @@ export async function bilTillHallplats(lat, lon, myndighet, uteslut = new Set())
     if (bil.minuter > MAX_BIL_MIN) continue;
 
     const parkering = await parkeringVid(s.lat, s.lon);
-    const resa = await resaTillStockholm(s.lat, s.lon, myndighet);
+    const resa = await resaTillPendlingsmal(s.lat, s.lon, myndighet, mal);
 
     return {
       hallplats: s.namn,
@@ -400,7 +425,7 @@ export async function bilTillHallplats(lat, lon, myndighet, uteslut = new Set())
       turtathet: { antal: turer.antal, klass: turer.klass, text: turer.text, forsta: turer.forsta, sista: turer.sista },
       // Hela dörr-till-dörr-tiden, inte bara bussdelen. Det är den siffran man
       // faktiskt jämför hus med.
-      totaltTillStockholmMin: resa ? bil.minuter + resa.restidMin : null,
+      totaltTillMalMin: resa ? bil.minuter + resa.restidMin : null,
       restidFranHallplatsMin: resa?.restidMin ?? null,
     };
   }

@@ -8,7 +8,11 @@ import { hittaHus, tolkaObjektsida } from "./objektsida.js";
 import { granskaAnnonsbilder, bildgranskningNotis } from "./bildgranskning.js";
 import { fragorTillMaklaren, kandaUppgifter } from "./fragor.js";
 import { kostnadsbild } from "./kostnader.js";
-import { narmasteHallplatser, resaTillStockholm, resaTillAndraMalet, turtathet, bilTillHallplats, harResrobotNyckel } from "./transit.js";
+import {
+  narmasteHallplatser, resaTillStockholm, resaTillPendlingsmal, pendlingsmal, resaTillAndraMalet, turtathet,
+  bilTillHallplats, harResrobotNyckel,
+} from "./transit.js";
+import { korTid } from "./bil.js";
 import { geokoda, slaUppPlats } from "./geocode.js";
 import { myndighetForKommun, visaKommun } from "./lan.js";
 import { naturInfo } from "./nature.js";
@@ -51,6 +55,16 @@ if (!harBooliNycklar() && !harImap()) {
 if (!harResrobotNyckel()) {
   console.warn("RESROBOT_API_KEY saknas – hållplatskollen hoppas över tills du lagt in en nyckel.");
 }
+
+// Pendlingsmålet som restiden och maxRestid gäller (Stockholm C om config
+// inte säger annat, se transit.js), och bilmålen som bara visas som körtid.
+const mal = pendlingsmal(k);
+const bilmal = (k.bilmal ?? []).filter((b) => b?.namn && Number.isFinite(b.lat) && Number.isFinite(b.lon));
+// Ändras målen i config räknas husen som redan finns om (se
+// omvarderaPendling nedan). Nyckeln är det som avgör om ett hus är räknat
+// mot de nuvarande målen.
+const pendlingsNyckel = JSON.stringify([mal.namn, mal.hallplatsId ?? [mal.lat, mal.lon], bilmal.map((b) => [b.namn, b.lat, b.lon])]);
+console.log(`Pendlingsmål: ${mal.namn}${bilmal.length ? `. Bilmål: ${bilmal.map((b) => b.namn).join(", ")}` : ""}.`);
 
 // Andra pendlingsmål (t.ex. en arbetsplats): valfritt, geokodas en gång här
 // och återanvänds för alla hus i den här körningen – adressen ändras ju
@@ -241,7 +255,7 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
   const pendling = [];
   const omgivning = [];
   const noteringar = [];
-  const matt = {};
+  const matt = { bilmal: [] };
   let uppfyller = true;
   let turer = null; // turtäthet från närmaste hållplats, se nedan
   let bilAlternativ = null; // bil till en hållplats som går att pendla från
@@ -294,7 +308,7 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
         // kör bil till en riktig hållplats och ställer bilen där. Utan det här
         // steget stod det bara "ingen trafik" och huset såg sämre ut än det är.
         if (turer.kraverBokning || turer.antal < 6) {
-          bilAlternativ = await bilTillHallplats(a.lat, a.lon, myndighet, new Set([h.narmaste.id]));
+          bilAlternativ = await bilTillHallplats(a.lat, a.lon, myndighet, new Set([h.narmaste.id]), mal);
           if (bilAlternativ) {
             const b = bilAlternativ;
             const cirka = b.bilUppskattad ? "ca " : "";
@@ -305,15 +319,15 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
             if (b.parkeringstext) pendling.push(`Parkering: ${b.parkeringstext}`);
             else pendling.push("Parkering: ingen hittad i OpenStreetMap vid hållplatsen");
             pendling.push(`Därifrån: ${b.turtathet.text}`);
-            if (b.totaltTillStockholmMin != null) {
-              pendling.push(`Totalt till Stockholm C med bil + kollektivt: ca ${fmtTid(b.totaltTillStockholmMin)}`);
+            if (b.totaltTillMalMin != null) {
+              pendling.push(`Totalt till ${mal.namn} med bil + kollektivt: ca ${fmtTid(b.totaltTillMalMin)}`);
             }
             // Poängen ska spegla hur man FAKTISKT skulle pendla. Turtätheten
             // räknas därför på hållplatsen man kör till, inte på den vid dörren
             // som ingen kan använda – men körtiden kostar, se score.js.
             matt.turtathetAvgangar = b.turtathet.antal;
             matt.bilTillHallplatsMin = b.bilMin;
-            if (b.totaltTillStockholmMin != null) matt.restidMin = b.totaltTillStockholmMin;
+            if (b.totaltTillMalMin != null) matt.restidMin = b.totaltTillMalMin;
           } else {
             pendling.push("⚠ Hittade ingen hållplats inom rimligt bilavstånd med regelbunden trafik");
           }
@@ -324,7 +338,7 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
       uppfyller = false;
     }
 
-    const resa = await resaTillStockholm(a.lat, a.lon, myndighet);
+    const resa = await resaTillPendlingsmal(a.lat, a.lon, myndighet, mal);
     if (resa) {
       // Hårt filter precis som pris/rum/yta: en resa på över maxRestid är
       // inte "en svag länk" man ändå vill se, det är en dealbreaker – huset
@@ -336,7 +350,7 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
         return;
       }
       const byten = resa.byten === 0 ? "utan byte" : `${resa.byten} byte${resa.byten > 1 ? "n" : ""}`;
-      pendling.push(`Stockholm C: ca ${fmtTid(resa.restidMin)} · ${byten}`);
+      pendling.push(`${mal.namn}: ca ${fmtTid(resa.restidMin)} · ${byten}`);
       matt.restidMin = resa.restidMin;
 
       // Biljettbeskedet utgår från LÄNEN, inte från hur många bolagsnamn som
@@ -351,8 +365,18 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
       for (const text of resa.bokning) pendling.push(`⚠ ${text}`);
     }
 
+    // Bilmålen (config.kriterier.bilmal) är bara upplysning, som andra
+    // pendlingsmålet nedan: hur långt det är att köra till affären, skolan
+    // eller centrum. Inget filter och ingen poäng, för ingen har bett om det.
+    for (const b of bilmal) {
+      const tid = await korTid({ lat: a.lat, lon: a.lon }, { lat: b.lat, lon: b.lon });
+      const km = String(tid.km).replace(".", ",");
+      pendling.push(`Bil till ${b.namn}: ${tid.uppskattad ? "ca " : ""}${tid.minuter} min (${km} km)`);
+      matt.bilmal.push({ namn: b.namn, min: tid.minuter, km: tid.km, uppskattad: tid.uppskattad });
+    }
+
     // Andra pendlingsmålet är bara informativt – inget hårt filter, ingen
-    // "dealbreaker"-logik som för Stockholm ovan.
+    // "dealbreaker"-logik som för pendlingsmålet ovan.
     if (andraMalKoord) {
       const resaAndra = await resaTillAndraMalet(
         a.lat, a.lon, andraMalKoord.lat, andraMalKoord.lon, myndighet, andraMalMyndighet
@@ -567,6 +591,10 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
     boarea: a.boarea ?? null,
     tomtarea: a.tomtarea ?? null,
     restidMin: matt.restidMin ?? null,
+    // Vilket mål restidMin gäller, så att en yta och omvärderingen vet det.
+    pendlingsmal: mal.namn,
+    pendlingsNyckel: a.lat != null ? pendlingsNyckel : null,
+    bilmal: matt.bilmal,
     restidAndraMalMin: matt.restidAndraMalMin ?? null,
     prisJmforelse,
     prisSankning,
@@ -765,6 +793,50 @@ function avstandKm(lat1, lon1, lat2, lon2) {
 }
 
 await rattaPlatser();
+
+// ---- Omvärdering när pendlings- eller bilmålen ändrats ----
+// Restid, bilresor och matchningspoäng räknas när ett hus analyseras och
+// sparas på huset. Byts målet i config (Stockholm C blev Alvik 2026-10-18)
+// står de gamla siffrorna kvar tills huset analyseras om, så det görs här,
+// tyst och i omgångar av samma skäl som rättningen ovan: körtid och
+// gratis-API:er. Bara med ResRobot-nyckel, annars skulle omvärderingen
+// skriva över riktig pendlingsdata med ingenting.
+const MAX_OMVARDERADE_PER_KORNING = 15;
+
+async function omvarderaPendling() {
+  if (!harResrobotNyckel()) return;
+  const kandidater = [...traffarLagrade.values()]
+    .filter((t) => t.lat != null && t.kommun && t.pendlingsNyckel !== pendlingsNyckel)
+    .slice(0, MAX_OMVARDERADE_PER_KORNING);
+  if (!kandidater.length) return;
+
+  console.log(`\nRäknar om pendlingen för ${kandidater.length} hus mot ${mal.namn}...`);
+  for (const t of kandidater) {
+    try {
+      await behandlaAnnons({
+        id: t.id, kalla: t.kalla, typ: t.typ, omrade: t.omrade, adress: t.adress,
+        pris: t.pris, rum: t.rum, boarea: t.boarea, tomtarea: t.tomtarea,
+        url: t.url, bild: t.bild,
+        lat: t.lat, lon: t.lon,
+        kommun: t.kommun, lan: t.lan, myndighet: t.myndighet,
+        platsPrecision: t.platsPrecision,
+      }, { tyst: true });
+      // behandlaAnnons skriver ingen ny post när huset faller på ett hårt
+      // filter. Med samma pris, rum och yta som förut är det restiden till
+      // det nya målet som är för lång, och då hör huset inte hemma i flödet.
+      if (traffarLagrade.get(t.id)?.pendlingsNyckel !== pendlingsNyckel) {
+        console.log(`  "${t.adress}" klarar inte restidskravet till ${mal.namn} – tas bort ur flödet.`);
+        traffarLagrade.delete(t.id);
+      }
+    } catch (err) {
+      console.error(`  Kunde inte räkna om ${t.id} (${t.adress}): ${err.message}`);
+    }
+  }
+  const kvar = [...traffarLagrade.values()].filter((t) => t.lat != null && t.kommun && t.pendlingsNyckel !== pendlingsNyckel).length;
+  if (kvar) console.log(`  ${kvar} hus kvar att räkna om nästa körning.`);
+}
+
+await omvarderaPendling();
 
 // Städa flödet: ta bort tidigare sparade hus som numera ligger utanför de
 // hårda filtren (t.ex. om maxpris sänkts) så listan alltid speglar kraven.

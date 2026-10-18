@@ -13,7 +13,7 @@
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { tolkaHemnetSlug } from "./mailsource.js";
 import { geokoda } from "./geocode.js";
-import { narmasteHallplatser, resaTillStockholm, harResrobotNyckel } from "./transit.js";
+import { narmasteHallplatser, resaTillPendlingsmal, pendlingsmal, harResrobotNyckel } from "./transit.js";
 import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
 import { lasTraffar, sparaTraffar } from "./matches.js";
@@ -139,9 +139,9 @@ if (!pos) {
       pendling.push("Ingen hållplats inom 3 km");
       brister.push("ingen hållplats inom 3 km");
     }
-    const resa = await resaTillStockholm(pos.lat, pos.lon, pos.myndighet);
+    const resa = await resaTillPendlingsmal(pos.lat, pos.lon, pos.myndighet, pendlingsmal(k));
     if (resa) {
-      pendling.push(`Stockholm C: ca ${fmtTid(resa.restidMin)}`);
+      pendling.push(`${pendlingsmal(k).namn}: ca ${fmtTid(resa.restidMin)}`);
       matt.restidMin = resa.restidMin;
       if (k.maxRestidStockholmMin && resa.restidMin > k.maxRestidStockholmMin)
         brister.push(`restid ${fmtTid(resa.restidMin)} (krav: ${fmtTid(k.maxRestidStockholmMin)})`);

@@ -12,6 +12,7 @@
 // förut. Nyheten inom pendling är turtäthet: förut kunde ett hus få full
 // pendlingspoäng för att hållplatsen låg 200 m bort, även om det bara gick
 // två bussar om dagen dit – eller ingen alls utan förbeställning.
+import { pendlingsmal } from "./transit.js";
 
 // Linjär skala: 0 (eller bättre) = 100 poäng, vid gränsvärdet = 0 poäng.
 function linjar(varde, max) {
@@ -23,6 +24,7 @@ const rund = (n) => Math.round(n * 10) / 10;
 const nummer = (n) => Number(n).toLocaleString("sv-SE");
 
 export function beraknaMatchning(k, matt = {}) {
+  const malNamn = pendlingsmal(k).namn;
   const { hallplatsAvstand, restidMin, turtathetAvgangar, bilTillHallplatsMin, vattenM, skogM, grannar } = matt;
 
   // ---- Pendling (30 %) ----
@@ -41,14 +43,14 @@ export function beraknaMatchning(k, matt = {}) {
     },
     {
       nyckel: "restid",
-      namn: "Restid till Stockholm C",
+      namn: `Restid till ${malNamn}`,
       vikt: 12,
       varde: restidMin,
       enhet: "min",
       krav: k.maxRestidStockholmMin,
       delpoang: linjar(restidMin, k.maxRestidStockholmMin),
       text: restidMin != null
-        ? `${nummer(restidMin)} min till Stockholm C (kravet är max ${nummer(k.maxRestidStockholmMin)} min)`
+        ? `${nummer(restidMin)} min till ${malNamn} (kravet är max ${nummer(k.maxRestidStockholmMin)} min)`
         : null,
     },
     {
