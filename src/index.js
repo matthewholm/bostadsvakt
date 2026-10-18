@@ -4,7 +4,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { harBooliNycklar, sokAnnonser } from "./booli.js";
 import { harImap, hamtaMailAnnonser, tolkaInklistradSida, geokodaAnnonser, objektsidaIMejl } from "./mailsource.js";
-import { hittaHus } from "./objektsida.js";
+import { hittaHus, tolkaObjektsida } from "./objektsida.js";
 import { granskaAnnonsbilder, bildgranskningNotis } from "./bildgranskning.js";
 import { fragorTillMaklaren, kandaUppgifter } from "./fragor.js";
 import { kostnadsbild } from "./kostnader.js";
@@ -132,6 +132,32 @@ if (existsSync(importFil)) {
     await geokodaAnnonser(lista, config.searches.map((s) => s.namn));
     annonser.push(...lista.map((a) => ({ ...a, import: true })));
     importerade.mejl = (importerade.mejl ?? 0) + 1;
+  }
+}
+
+// Text som klistrats in på ett hus i Alva och kommit hit som en
+// repository_dispatch (se workflowen). Till skillnad från mejl och importfil
+// vet vi här exakt vilket hus det gäller: Alva skickar postens id, som är
+// husets id ur sida.json. Adressen i texten behövs alltså inte.
+if (process.env.INMATNING_FIL && existsSync(process.env.INMATNING_FIL)) {
+  let inmatning = null;
+  try {
+    inmatning = JSON.parse(readFileSync(process.env.INMATNING_FIL, "utf8"));
+  } catch (err) {
+    console.error(`\nTexten från Alva gick inte att läsa: ${err.message}`);
+  }
+  const text = typeof inmatning?.text === "string" ? inmatning.text : "";
+  const husId = typeof inmatning?.item_id === "string" ? inmatning.item_id : null;
+  const fakta = tolkaObjektsida(text);
+  console.log(`\nText från Alva för ${husId ?? "okänt hus"}: ${Object.keys(fakta).join(", ") || "inga uppgifter"}.`);
+  if (Object.keys(fakta).length) {
+    objektsidor.push({ amne: "", text, fakta, husId });
+  } else if (text.trim()) {
+    await notis({
+      titel: "Inga uppgifter i texten från Alva",
+      meddelande: "Texten kom fram, men innehöll inget som pris, pantbrev, taxeringsvärde eller byggår. " +
+        "Markera hela annonsen eller objektbeskrivningen och klistra in den igen.",
+    });
   }
 }
 
@@ -777,7 +803,7 @@ if (objektsidor.length) {
     befintliga = JSON.parse(readFileSync(new URL("../data-repo/data/husuppgifter.json", import.meta.url), "utf8"));
   } catch {}
   for (const o of objektsidor) {
-    const hus = hittaHus(o.text, o.amne, [...traffarLagrade.values()]);
+    const hus = (o.husId && traffarLagrade.get(o.husId)) || hittaHus(o.text, o.amne, [...traffarLagrade.values()]);
     if (!hus) {
       console.log(`  Objektbeskrivning utan känt hus: "${o.amne}".`);
       await notis({

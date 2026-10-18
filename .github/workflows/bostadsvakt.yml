@@ -5,6 +5,11 @@ on:
     # Var 30:e minut, kl 06–21 svensk tid (04–19 UTC sommartid)
     - cron: "*/30 4-19 * * *"
   workflow_dispatch: {}
+  # Text som klistrats in på ett hus i Alva ("Skicka till källan" på en
+  # extern koppling). Alva skickar { item_id, text } som client_payload,
+  # där item_id är husets id ur sida.json. Se index.js, INMATNING_FIL.
+  repository_dispatch:
+    types: [alva_text]
 
 concurrency:
   group: bostadsvakt
@@ -38,8 +43,18 @@ jobs:
       # playwright install annars laddar ner i onödan.
       - run: npx playwright install --with-deps chromium
 
+      # Texten från Alva läggs utanför data-repo/, så att den aldrig kan
+      # råka committas med resten av datan. Via env och toJSON, aldrig
+      # inklistrad i skriptet, så att texten inte kan bli kod.
+      - name: Spara texten från Alva
+        if: github.event_name == 'repository_dispatch'
+        env:
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: printf '%s' "$PAYLOAD" > "$RUNNER_TEMP/inmatning.json"
+
       - name: Kör bostadsvakten
         env:
+          INMATNING_FIL: ${{ github.event_name == 'repository_dispatch' && format('{0}/inmatning.json', runner.temp) || '' }}
           BOOLI_CALLER_ID: ${{ secrets.BOOLI_CALLER_ID }}
           BOOLI_PRIVATE_KEY: ${{ secrets.BOOLI_PRIVATE_KEY }}
           IMAP_HOST: ${{ secrets.IMAP_HOST }}
