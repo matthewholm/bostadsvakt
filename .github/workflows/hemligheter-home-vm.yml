@@ -1,0 +1,61 @@
+name: Hemligheter till home-vm
+
+# Körs bara manuellt, en gång när home-vm sätts upp (README, "Köra på
+# home-vm"). GitHub lämnar aldrig ut ett sparat secret i klartext, så den här
+# workflowen krypterar dem till home-vm:s publika age-nyckel. Bara den privata
+# nyckeln, som aldrig lämnar home-vm, kan packa upp klumpen till .env.
+# Klumpen syns i loggen och sammanfattningen, som är publika, men är oläslig
+# utan den privata nyckeln. Ta ändå bort körningen när klumpen är hämtad.
+on:
+  workflow_dispatch:
+    inputs:
+      publik_nyckel:
+        description: "home-vm:s publika nyckel (age1...), från age-keygen"
+        required: true
+
+jobs:
+  kryptera:
+    runs-on: ubuntu-latest
+    steps:
+      - run: sudo apt-get install -y -qq age > /dev/null
+
+      # Nyckeln via env och kontrollerad mot age-formatet, aldrig inklistrad i
+      # skriptet, så att indata inte kan bli kod.
+      - name: Kryptera till home-vm
+        env:
+          NYCKEL: ${{ inputs.publik_nyckel }}
+          IMAP_HOST: ${{ secrets.IMAP_HOST }}
+          IMAP_USER: ${{ secrets.IMAP_USER }}
+          IMAP_PASSWORD: ${{ secrets.IMAP_PASSWORD }}
+          RESROBOT_API_KEY: ${{ secrets.RESROBOT_API_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          HA_WEBHOOK_URL: ${{ secrets.HA_WEBHOOK_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          BOOLI_CALLER_ID: ${{ secrets.BOOLI_CALLER_ID }}
+          BOOLI_PRIVATE_KEY: ${{ secrets.BOOLI_PRIVATE_KEY }}
+        run: |
+          NYCKEL=$(printf '%s' "$NYCKEL" | tr -d '[:space:]')
+          if ! [[ "$NYCKEL" =~ ^age1[02-9ac-hj-np-z]{58}$ ]]; then
+            echo "::error::Det där ser inte ut som en publik age-nyckel (age1 följt av 58 tecken)."
+            exit 1
+          fi
+          env_fil="$RUNNER_TEMP/env"
+          umask 077
+          : > "$env_fil"
+          for namn in IMAP_HOST IMAP_USER IMAP_PASSWORD RESROBOT_API_KEY NTFY_TOPIC HA_WEBHOOK_URL \
+                      ANTHROPIC_API_KEY DATA_REPO_TOKEN BOOLI_CALLER_ID BOOLI_PRIVATE_KEY; do
+            if [ -n "${!namn}" ]; then printf '%s=%s\n' "$namn" "${!namn}" >> "$env_fil"; fi
+          done
+          echo "Med i klumpen: $(cut -d= -f1 "$env_fil" | tr '\n' ' ')"
+          klump=$(age -r "$NYCKEL" "$env_fil" | base64 -w0)
+          shred -u "$env_fil"
+          echo "Klistra in den här raden på home-vm enligt README:"
+          echo "$klump"
+          {
+            echo "### Klump till home-vm"
+            echo "Kopiera raden och klistra in den på home-vm enligt README, \"Köra på home-vm\"."
+            echo '```'
+            echo "$klump"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
