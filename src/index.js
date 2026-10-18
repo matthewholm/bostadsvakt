@@ -1,9 +1,12 @@
 // Bostadsvakt – letar nya bostäder via Booli-API och/eller bevakningsmejl
 // (Hemnet + Booli), kollar pendling (ResRobot), vatten/skog/grannar
 // (OpenStreetMap) och skickar push-notiser via en Home Assistant-webhook.
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { harBooliNycklar, sokAnnonser } from "./booli.js";
-import { harImap, hamtaMailAnnonser, tolkaInklistradSida, geokodaAnnonser } from "./mailsource.js";
+import { harImap, hamtaMailAnnonser, tolkaInklistradSida, geokodaAnnonser, objektsidaIMejl } from "./mailsource.js";
+import { hittaHus } from "./objektsida.js";
+import { fragorTillMaklaren, kandaUppgifter } from "./fragor.js";
+import { kostnadsbild } from "./kostnader.js";
 import { narmasteHallplatser, resaTillStockholm, resaTillAndraMalet, turtathet, bilTillHallplats, harResrobotNyckel } from "./transit.js";
 import { geokoda, slaUppPlats } from "./geocode.js";
 import { myndighetForKommun, visaKommun } from "./lan.js";
@@ -72,6 +75,9 @@ let traffar = 0;
 // Inklistrade Hemnet-söksidor (se tolkaInklistradSida) kan ge 30 hus på en
 // gång – de sparas tyst och sammanfattas i EN notis efteråt.
 const importerade = { sparade: 0, traffar: [] };
+// Inklistrade objektbeskrivningar (se objektsida.js): uppgifter om ett hus
+// som redan finns i flödet, inte nya hus.
+const objektsidor = [];
 
 // ---- Samla annonser från alla källor ----
 const annonser = [];
@@ -95,11 +101,12 @@ if (harBooliNycklar()) {
 if (harImap()) {
   console.log("\nLäser bevakningsmejl (Hemnet/Booli)...");
   try {
-    const { annonser: lista, slutpriser: nyaSlutpriser, importMejl } = await hamtaMailAnnonser(
+    const { annonser: lista, slutpriser: nyaSlutpriser, importMejl, objektsidor: nyaObjekt } = await hamtaMailAnnonser(
       config.searches.map((s) => s.namn),
       { importAvsandare: config.importAvsandare ?? [] }
     );
     importerade.mejl = importMejl;
+    objektsidor.push(...nyaObjekt);
     console.log(`  ${lista.length} annonser i mejlen, ${nyaSlutpriser.length} nya slutpriser.`);
     annonser.push(...lista);
     if (nyaSlutpriser.length) sparaSlutpriser([...lasSlutpriser(), ...nyaSlutpriser]);
@@ -113,11 +120,18 @@ if (harImap()) {
 // körningen sparat, så den läses bara en gång.
 const importFil = new URL("../data-repo/data/import.html", import.meta.url);
 if (existsSync(importFil)) {
-  const lista = tolkaInklistradSida(readFileSync(importFil, "utf8"));
-  console.log(`\nImportfil: ${lista.length} annonser.`);
-  await geokodaAnnonser(lista, config.searches.map((s) => s.namn));
-  annonser.push(...lista.map((a) => ({ ...a, import: true })));
-  importerade.mejl = (importerade.mejl ?? 0) + 1;
+  const html = readFileSync(importFil, "utf8");
+  const lista = tolkaInklistradSida(html);
+  const objekt = objektsidaIMejl({ html }, lista.length);
+  if (objekt) {
+    console.log(`\nImportfil: objektbeskrivning (${Object.keys(objekt.fakta).join(", ")}).`);
+    objektsidor.push(objekt);
+  } else {
+    console.log(`\nImportfil: ${lista.length} annonser.`);
+    await geokodaAnnonser(lista, config.searches.map((s) => s.namn));
+    annonser.push(...lista.map((a) => ({ ...a, import: true })));
+    importerade.mejl = (importerade.mejl ?? 0) + 1;
+  }
 }
 
 // ---- Slå ihop dubbletter mellan källor ----
@@ -748,6 +762,51 @@ if (traffarLagrade.size !== antalForeStad) {
 sparaSedda(sedda);
 sparaTraffar([...traffarLagrade.values()]);
 console.log(`  Sparade ${traffarLagrade.size} hus till data/traffar.json.`);
+
+// ---- Husuppgifter ur inklistrade objektbeskrivningar ----
+// Bara den här körningens nya uppgifter skrivs, till en egen fil som
+// workflowens spara-steg lägger ovanpå den senaste husuppgifter.json (se
+// merge.js). Annars kunde en handrättning av filen på GitHub, gjord medan
+// körningen pågick, skrivas över av en gammal kopia.
+if (objektsidor.length) {
+  const nyaUppgifter = {};
+  let befintliga = {};
+  try {
+    befintliga = JSON.parse(readFileSync(new URL("../data-repo/data/husuppgifter.json", import.meta.url), "utf8"));
+  } catch {}
+  for (const o of objektsidor) {
+    const hus = hittaHus(o.text, o.amne, [...traffarLagrade.values()]);
+    if (!hus) {
+      console.log(`  Objektbeskrivning utan känt hus: "${o.amne}".`);
+      await notis({
+        titel: "Uppgifter kom in, men vilket hus?",
+        meddelande: [
+          "Hittade uppgifter i mejlet men ingen adress som finns i flödet:",
+          ...kandaUppgifter(o.fakta),
+          "",
+          "Skriv husets adress i ämnesraden, precis som den står i Bostäder, och skicka igen.",
+        ].join("\n"),
+      });
+      continue;
+    }
+    nyaUppgifter[hus.id] = { ...nyaUppgifter[hus.id], ...o.fakta, uppdaterad: new Date().toISOString() };
+    const alla = { ...befintliga[hus.id], ...nyaUppgifter[hus.id] };
+    const kvar = fragorTillMaklaren(hus, alla, kostnadsbild(hus, alla, config.hushall)).length;
+    console.log(`  Uppgifter sparade för ${hus.adress} [${hus.id}]: ${Object.keys(o.fakta).join(", ")}.`);
+    await notis({
+      titel: `Uppgifter sparade: ${hus.adress}`,
+      meddelande: [...kandaUppgifter(o.fakta), "", `Kostnader och prisbedömning är omräknade. ${kvar} frågor kvar till mäklaren.`].join("\n"),
+      lank: hus.url,
+      bild: hus.bild ?? undefined,
+    });
+  }
+  if (Object.keys(nyaUppgifter).length) {
+    writeFileSync(
+      new URL("../data-repo/data/husuppgifter-nya.json", import.meta.url),
+      JSON.stringify(nyaUppgifter, null, 2) + "\n",
+    );
+  }
+}
 
 const antalInklistrade = annonser.filter((a) => a.import).length;
 if (importerade.mejl && !antalInklistrade) {

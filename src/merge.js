@@ -2,12 +2,12 @@
 // den senaste versionen från origin. Körs i workflowens spara-loop, INNE I
 // data-repo/-checkouten (bostadsvakt-data, se README) så att samtidiga
 // körningar aldrig krockar. Anropas som:
-//   node ../src/merge.js <mina-traffar.json> [<mina-seen.json>] [<mina-slutpriser.json>]
+//   node ../src/merge.js <mina-traffar.json> [<mina-seen.json>] [<mina-slutpriser.json>] [<nya-husuppgifter.json>]
 // och skriver de sammanslagna data/traffar.json (+ seen.json/slutpriser.json om angivna),
 // relativt CWD – som ska vara data-repo/ när det här körs.
 import { readFileSync, writeFileSync } from "node:fs";
 
-const [, , minaTraffarPath, minaSeddaPath, minaSlutpriserPath] = process.argv;
+const [, , minaTraffarPath, minaSeddaPath, minaSlutpriserPath, nyaUppgifterPath] = process.argv;
 const las = (p, fallback) => {
   try {
     return JSON.parse(readFileSync(p, "utf8"));
@@ -48,6 +48,19 @@ if (minaSeddaPath) {
   const mina = las(minaSeddaPath, []);
   const alla = [...new Set([...bas, ...mina])].sort();
   writeFileSync("data/seen.json", JSON.stringify(alla, null, 2) + "\n");
+}
+
+// Husuppgifter: körningens NYA uppgifter (husuppgifter-nya.json, se index.js)
+// läggs fält för fält ovanpå den senaste filen. Inget annat rörs, så en
+// handrättning gjord under körningen står kvar, och poster för hus som fallit
+// ur flödet sparas, ifall huset kommer tillbaka.
+if (nyaUppgifterPath) {
+  const nya = las(nyaUppgifterPath, {});
+  if (Object.keys(nya).length) {
+    const bas = las("data/husuppgifter.json", {});
+    for (const [id, falt] of Object.entries(nya)) bas[id] = { ...bas[id], ...falt };
+    writeFileSync("data/husuppgifter.json", JSON.stringify(bas, null, 2) + "\n");
+  }
 }
 
 // Slutpriser: slå ihop, kasta det som blivit för gammalt, begränsa storleken

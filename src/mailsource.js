@@ -5,6 +5,7 @@
 // Kräver IMAP_USER + IMAP_PASSWORD (och IMAP_HOST om inte Gmail).
 import { geokoda } from "./geocode.js";
 import { myndighetForOrt } from "./lan.js";
+import { tolkaObjektsida, htmlTillText } from "./objektsida.js";
 
 export function harImap() {
   return Boolean(process.env.IMAP_USER && process.env.IMAP_PASSWORD);
@@ -28,6 +29,7 @@ export async function hamtaMailAnnonser(areas = [], { importAvsandare = [] } = {
   const annonser = new Map();
   const slutpriser = [];
   let importMejl = 0;
+  const objektsidor = [];
   const tillatnaImport = new Set(
     [...importAvsandare, process.env.IMAP_USER].filter(Boolean).map((s) => String(s).trim().toLowerCase())
   );
@@ -43,6 +45,17 @@ export async function hamtaMailAnnonser(areas = [], { importAvsandare = [] } = {
       const avsandarAdress = (mail.from?.value?.[0]?.address ?? "").toLowerCase();
       if (tillatnaImport.has(avsandarAdress)) {
         const lista = tolkaInklistradSida(mail.html || "", mail.text || "");
+        // En objektbeskrivning (eller ett handskrivet "pantbrev 1 200 000 kr")
+        // handlar om ETT hus som redan finns i flödet. Hemnets objektsida har
+        // också kort för liknande bostäder längst ner, och de ska inte
+        // importeras som om det vore en söksida. Se objektsida.js.
+        const objekt = objektsidaIMejl(mail, lista.length);
+        if (objekt) {
+          objektsidor.push(objekt);
+          console.log(`  Objektbeskrivning från ${avsandarAdress}: ${Object.keys(objekt.fakta).join(", ")}.`);
+          await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
+          continue;
+        }
         importMejl++;
         console.log(`  Import från ${avsandarAdress}: ${lista.length} annonser i "${mail.subject ?? ""}".`);
         for (const a of lista) annonser.set(a.id, { ...a, import: true });
@@ -89,7 +102,18 @@ export async function hamtaMailAnnonser(areas = [], { importAvsandare = [] } = {
   // Sverige accepterades blint, vilket placerade Roslagen-hus i Uppsala och
   // ett hus ända nere vid Trosa.
   await geokodaAnnonser(annonser.values(), areas);
-  return { annonser: [...annonser.values()], slutpriser, importMejl };
+  return { annonser: [...annonser.values()], slutpriser, importMejl, objektsidor };
+}
+
+/** Ett importmejl är en objektbeskrivning när det bär husuppgifter: minst
+ *  två (en sökresultatsida har inga), eller en enda när mejlet inte heller
+ *  innehöll några annonskort (ett kort handskrivet mejl). */
+export function objektsidaIMejl({ html, text, subject }, antalKort = 0) {
+  const ren = text || htmlTillText(html || "");
+  const fakta = tolkaObjektsida(ren);
+  const antal = Object.keys(fakta).length;
+  if (antal >= 2 || (antal === 1 && antalKort === 0)) return { amne: subject ?? "", text: ren, fakta };
+  return null;
 }
 
 export async function geokodaAnnonser(annonser, areas = []) {

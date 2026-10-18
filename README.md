@@ -164,7 +164,7 @@ Allt sparas i `bostadsvakt-data/config.json`, som du förstås också kan redige
     "nettoinkomstManad": null,             // opt-in – utan den räknas ingen "har vi råd" alls
     "kontantinsatsTillgangligt": null,
     "ovrigaLanManad": 0,
-    "antagande": { "ranta": 3.5, "kalkylranta": 6, "driftskostnadKvmAr": 400 }, // valfritt, se ekonomi.js för defaultvärden
+    "antagande": { "ranta": 3.5, "kalkylranta": 6, "driftskostnadKvmAr": 400, "underhallKvmAr": 150 }, // valfritt, se ekonomi.js och kostnader.js för defaultvärden
     "nuvarandeBostad": null                // { "varde": ..., "kvarstaendeLan": ... } för att räkna en försäljnings nettolikvid
   },
   "notiser": { "endastTräffar": true } // false = notis om ALLA nya, träffar märks med 🎯
@@ -196,6 +196,54 @@ skickas som `Authorization: Bearer` — till skillnad från GitHub:s vanliga
 Contents-API (`api.github.com/repos/.../contents/...`), som svarar med filen
 base64-kodad i ett JSON-svep i stället för filens egna innehåll rakt av, vilket
 Alvas generiska koppling inte packar upp.
+
+## Pris, kostnader och frågor till mäklaren
+
+Varje hus i Bostäder får fyra egna avsnitt, uträknade i `src/sida.js` vid
+varje körning (så de finns för alla hus direkt, utan omanalys):
+
+- **PRISBEDÖMNING**: uppskattat marknadsvärde, om utgångspriset ser lågt
+  eller högt ut, förslag på första bud och smärtgräns, och vad 100 000 kr
+  högre bud kostar per månad. Bygger på SCB:s statistik över sålda villor i
+  husets kommun (köpeskillingskoefficienten, slutpris delat med
+  taxeringsvärde), justerad med länets senaste månadssiffra. Ett husspecifikt
+  värde kräver husets taxeringsvärde; utan det visas vilket taxeringsvärde
+  utgångspriset motsvarar, och ingen påhittad smärtgräns. SCB-siffrorna
+  cachas en vecka i `bostadsvakt-data/data/marknad.json`. Se `src/marknad.js`.
+- **KÖPKOSTNADER**: lagfart, pantbrev (med avdrag för befintliga pantbrev när
+  de är kända), kontantinsats och vad som ska betalas vid köpet.
+- **LÖPANDE KOSTNADER**: ränta, amortering, driftkostnad, fastighetsavgift,
+  ev. tomträttsavgäld och samfällighet, underhåll och totalt per månad före
+  och efter ränteavdrag. Varje rad säger om siffran är lagstadgad, husets
+  egen eller en uppskattning. Se `src/kostnader.js`.
+- **FRÅGOR TILL MÄKLAREN**: en numrerad lista byggd på vad som saknas och vad
+  som är känt om huset (byggår 1929 till 1975 ger blåbetongfrågan, nära
+  vatten ger strandskyddsfrågan, en prissänkning ger frågan varför, osv.).
+  Se `src/fragor.js`.
+
+### Ge appen husets egna uppgifter
+
+Pantbrev, taxeringsvärde, driftkostnad, byggår, upplåtelseform,
+uppvärmning, vatten och avlopp och energiklass står i Hemnets annons och i
+mäklarens objektbeskrivning. Markera allt på sidan (Ctrl+A, Ctrl+C) och
+klistra in i ett mejl till inkorgen, från samma adress som importerna. Det
+går också att skriva mejlet själv:
+
+```
+Ämne: Häckgränd 8
+Pantbrev 3 st, totalt 1 100 000 kr
+Taxeringsvärde 2 050 000 kr
+```
+
+Appen känner igen huset på adressen (ämnesraden först, annars den adress som
+står tidigast i texten), sparar uppgifterna i
+`bostadsvakt-data/data/husuppgifter.json` och skickar en notis om vad den
+läste. Kostnader och prisbedömning räknas om, och besvarade frågor försvinner
+ur listan. Filen går också att rätta för hand på GitHub, ett objekt per
+hus-id med fälten `pantbrev`, `pantbrevAntal`, `taxeringsvarde`,
+`driftskostnadManad`, `byggar`, `upplatelseform`, `tomtrattsavgaldAr`,
+`samfallighetAr`, `ingenSamfallighet`, `uppvarmning`, `va`, `energiklass` och
+`fastighetsbeteckning`.
 
 ## Testa direkt på GitHub
 

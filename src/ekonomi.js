@@ -29,8 +29,8 @@ export const PANTBREV = { procent: 2, expedition: 375 };
 /** Normalvilla-schablon, 350–450 kr/m²/år enligt jämförda mäklarkällor. Det
  * verkliga spannet är brett (30 000–80 000 kr/år totalt) – används bara när
  * annonsen inte anger en riktig driftskostnad. */
-const DRIFTSKOSTNAD_KVM_AR_DEFAULT = 400;
-const RANTA_DEFAULT = 3.2; // ungefärlig snittränta rörlig/kort bindning, aug 2026
+export const DRIFTSKOSTNAD_KVM_AR_DEFAULT = 400;
+export const RANTA_DEFAULT = 3.2; // ungefärlig snittränta rörlig/kort bindning, aug 2026
 const KALKYLRANTA_DEFAULT = 6; // stresstest – ingen bank tvingas till en viss siffra, detta är en försiktig egen
 
 export function beraknaLagfart(kopeskilling) {

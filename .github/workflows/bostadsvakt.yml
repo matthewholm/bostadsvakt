@@ -60,12 +60,16 @@ jobs:
           # En importfil (se index.js) läses en gång – den här körningen har
           # läst den, så den tas bort när resultatet sparas.
           if [ -f data/import.html ]; then touch /tmp/import-last; fi
+          # Nya husuppgifter ur inklistrade objektbeskrivningar läggs ovanpå
+          # den senaste husuppgifter.json av merge.js; själva deltafilen ska
+          # aldrig committas, så den flyttas ut ur checkouten.
+          if [ -f data/husuppgifter-nya.json ]; then mv data/husuppgifter-nya.json /tmp/nya-husuppgifter.json; fi
           git config user.name "bostadsvakt-bot"
           git config user.email "actions@users.noreply.github.com"
           for i in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            node ../src/merge.js /tmp/mina-traffar.json /tmp/mina-seen.json /tmp/mina-slutpriser.json
+            node ../src/merge.js /tmp/mina-traffar.json /tmp/mina-seen.json /tmp/mina-slutpriser.json /tmp/nya-husuppgifter.json
             node ../src/sida.js
             if [ -f /tmp/import-last ]; then git rm -q --ignore-unmatch data/import.html; fi
             git add data/

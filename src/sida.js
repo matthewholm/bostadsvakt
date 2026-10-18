@@ -19,8 +19,24 @@
 // pendling, omgivning, matchning, AI-omdöme – är fritext i rader, för det
 // är just det de är: text ingen sida behöver förstå strukturen av, bara visa.
 import { readFileSync, writeFileSync } from "node:fs";
+import { kostnadsbild, kostnadsSektioner } from "./kostnader.js";
+import { fragorTillMaklaren, kandaUppgifter } from "./fragor.js";
+import { lasMarknad, prisbedomning } from "./marknad.js";
 
 const traffar = JSON.parse(readFileSync("data/traffar.json", "utf8"));
+const las = (fil, reserv) => {
+  try { return JSON.parse(readFileSync(fil, "utf8")); } catch { return reserv; }
+};
+const config = las("config.json", {});
+// Husets egna uppgifter (pantbrev, taxeringsvärde med mera) ligger i en egen
+// fil per hus-id, inte på husposten: de ska överleva att huset faller ur
+// flödet och kommer tillbaka, och de går att rätta för hand på GitHub.
+const husuppgifter = las("data/husuppgifter.json", {});
+const marknad = await lasMarknad(
+  "data/marknad.json",
+  [...new Set(traffar.map((h) => h.kommun).filter(Boolean))],
+  [...new Set(traffar.map((h) => h.lan).filter(Boolean))],
+);
 
 const kr = (n) => (n == null ? null : n.toLocaleString("sv-SE") + " kr");
 
@@ -31,8 +47,14 @@ const kr = (n) => (n == null ? null : n.toLocaleString("sv-SE") + " kr");
 const sektion = (rubrik, rader) => (rader?.length ? ["", rubrik, ...rader] : []);
 
 const post = (hus) => {
+  const uppgifter = husuppgifter[hus.id] ?? {};
+  const byggar = uppgifter.byggar ?? hus.byggar;
+  const kostnad = kostnadsbild(hus, uppgifter, config.hushall);
+  const pris = prisbedomning({
+    hus, uppgifter, marknad, kostnad, flode: traffar, maxPris: config.kriterier?.maxPris ?? null,
+  });
   const rader = [
-    [hus.typ, kr(hus.pris), hus.rum && `${hus.rum} rum`, hus.boarea && `${hus.boarea} m²`, hus.byggar && `byggt ${hus.byggar}`]
+    [hus.typ, kr(hus.pris), hus.rum && `${hus.rum} rum`, hus.boarea && `${hus.boarea} m²`, byggar && `byggt ${byggar}`]
       .filter(Boolean)
       .join(" · "),
     hus.poang != null && (hus.uppfyller ? `Träff · ${hus.poang} poäng` : `${hus.poang} poäng`),
@@ -43,12 +65,21 @@ const post = (hus) => {
     // nedanför är underlaget den byggde på. En läsare vill veta vad AI:n
     // tycker innan hen bläddrar igenom bevisen, inte efter.
     hus.aiOmdome && ["", "AI-OMDÖME", hus.aiOmdome],
+    // Pris, bud och kostnader räknas här och inte i index.js, så att de
+    // finns för alla hus i flödet direkt och följer med när en uppgift om
+    // huset kommer in, utan att huset behöver analyseras om.
+    ...sektion("PRISBEDÖMNING", pris?.rader),
+    ...kostnadsSektioner(kostnad).flatMap((s) => sektion(s.titel, s.rader)),
     // Hus som fanns innan sektioner-fältet byggdes (se index.js) har ännu
     // inte fått det ifyllt av en färsk körning – då faller vi tillbaka på
     // de äldre platta fälten i stället för att tappa raderna helt.
     ...(hus.sektioner
       ? hus.sektioner.flatMap((s) => sektion(s.titel, s.rader))
       : [...sektion("PENDLING", hus.pendling), ...sektion("OMGIVNING", hus.omgivning), ...sektion("EKONOMI", hus.ekonomiRader)]),
+    // Sist, som en checklista inför samtalet: det som redan är känt, och
+    // det som återstår att fråga. Frågorna försvinner i takt med svaren.
+    ...sektion("HUSETS UPPGIFTER", kandaUppgifter(uppgifter)),
+    ...sektion("FRÅGOR TILL MÄKLAREN", fragorTillMaklaren(hus, uppgifter, kostnad)),
   ]
     .flat()
     // Filtrerar bort de rader som var villkorliga (false, inte bara "" eller
