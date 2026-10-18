@@ -164,3 +164,28 @@ export function hittaHus(text, amne, husLista) {
   }
   return null;
 }
+
+/** Klistra-in-sidan skriver annonsens länk överst i data/annons.html, så att
+ *  analysera.js kan se att filen hör till länken den fick. */
+export const annonsMarkor = (lank) => `<!-- bostadsvakt-annons: ${lank} -->`;
+const utanFragor = (lank) => String(lank).replace(/[?#].*$/, "").replace(/\/+$/, "");
+export function annonsenGaller(html, lank) {
+  const markt = String(html).match(/^<!-- bostadsvakt-annons: (\S+) -->/)?.[1];
+  return Boolean(markt) && utanFragor(markt) === utanFragor(lank);
+}
+
+/**
+ * Adressen ur en Booli-sida. Booli bäddar in annonsens data som JSON, där
+ * gatuadressen heter streetAddress, samma namn som i deras API (se
+ * booli.js). Rubriken är reserven. Inte provat mot en riktig Booli-sida
+ * härifrån, för sandlådan där det skrevs nådde inte booli.se: faller den,
+ * säger notisen det i stället för att gissa en plats.
+ */
+export function booliAdress(html) {
+  const json = (nyckel) => html.match(new RegExp(`"${nyckel}"\\s*:\\s*"([^"]{2,80})"`))?.[1];
+  const gata = json("streetAddress") ?? htmlTillText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? "").trim();
+  if (!gata) return null;
+  const ort = json("municipalityName") ?? json("city") ?? json("areaName") ?? "";
+  return { gata: gata.replace(/\s+/g, " "), ort };
+}
+

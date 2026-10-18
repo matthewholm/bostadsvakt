@@ -3,6 +3,7 @@
 // (booli.ungapped.io) som dubbel-kodar den riktiga länken – därför avkodas
 // texten flera varv, och adress/bild plockas ur mejlets HTML.
 // Kräver IMAP_USER + IMAP_PASSWORD (och IMAP_HOST om inte Gmail).
+import { hittaBilder } from "./bilder.js";
 import { geokoda } from "./geocode.js";
 import { myndighetForOrt } from "./lan.js";
 import { tolkaObjektsida, htmlTillText } from "./objektsida.js";
@@ -112,7 +113,10 @@ export function objektsidaIMejl({ html, text, subject }, antalKort = 0) {
   const ren = text || htmlTillText(html || "");
   const fakta = tolkaObjektsida(ren);
   const antal = Object.keys(fakta).length;
-  if (antal >= 2 || (antal === 1 && antalKort === 0)) return { amne: subject ?? "", text: ren, fakta };
+  // Bilderna följer med, så att en inklistrad annons granskas på samma sätt
+  // som en inskickad länk (se bildgranskning.js). Ett handskrivet mejl har
+  // inga och får en tom lista.
+  if (antal >= 2 || (antal === 1 && antalKort === 0)) return { amne: subject ?? "", text: ren, fakta, bilder: hittaBilder(html || "") };
   return null;
 }
 

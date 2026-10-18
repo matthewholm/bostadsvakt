@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { harBooliNycklar, sokAnnonser } from "./booli.js";
 import { harImap, hamtaMailAnnonser, tolkaInklistradSida, geokodaAnnonser, objektsidaIMejl } from "./mailsource.js";
 import { hittaHus } from "./objektsida.js";
+import { granskaAnnonsbilder, bildgranskningNotis } from "./bildgranskning.js";
 import { fragorTillMaklaren, kandaUppgifter } from "./fragor.js";
 import { kostnadsbild } from "./kostnader.js";
 import { narmasteHallplatser, resaTillStockholm, resaTillAndraMalet, turtathet, bilTillHallplats, harResrobotNyckel } from "./transit.js";
@@ -790,7 +791,23 @@ if (objektsidor.length) {
       });
       continue;
     }
-    nyaUppgifter[hus.id] = { ...nyaUppgifter[hus.id], ...o.fakta, uppdaterad: new Date().toISOString() };
+    // Fanns annonsens bilder i det inklistrade granskas de nu, med det som
+    // just lästes ut som sammanhang. En gång per inklistring, aldrig per körning.
+    const granskning = o.bilder?.length
+      ? await granskaAnnonsbilder({
+          urls: o.bilder,
+          referer: hus.url,
+          adress: hus.adress,
+          fakta: [hus.pris != null && `Pris: ${hus.pris.toLocaleString("sv-SE")} kr`, ...kandaUppgifter(o.fakta)].filter(Boolean),
+          beskrivning: o.text,
+        })
+      : null;
+    nyaUppgifter[hus.id] = {
+      ...nyaUppgifter[hus.id],
+      ...o.fakta,
+      ...(granskning ? { bildgranskning: granskning } : {}),
+      uppdaterad: new Date().toISOString(),
+    };
     // Ett hus som saknade pris får det på själva posten också, så att
     // sorteringen och prisfiltret (se merge.js) ser det. Ett känt pris rörs inte.
     if (hus.pris == null && o.fakta.pris) {
@@ -803,7 +820,12 @@ if (objektsidor.length) {
     console.log(`  Uppgifter sparade för ${hus.adress} [${hus.id}]: ${Object.keys(o.fakta).join(", ")}.`);
     await notis({
       titel: `Uppgifter sparade: ${hus.adress}`,
-      meddelande: [...kandaUppgifter(o.fakta), "", `Kostnader och prisbedömning är omräknade. ${kvar} frågor kvar till mäklaren.`].join("\n"),
+      meddelande: [
+        ...kandaUppgifter(o.fakta),
+        ...(granskning ? ["", ...bildgranskningNotis(granskning)] : []),
+        "",
+        `Kostnader och prisbedömning är omräknade. ${kvar} frågor kvar till mäklaren.`,
+      ].join("\n"),
       lank: hus.url,
       bild: hus.bild ?? undefined,
     });

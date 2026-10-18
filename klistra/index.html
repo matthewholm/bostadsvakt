@@ -54,9 +54,9 @@
 <body>
 <main>
   <h1>Klistra in annons</h1>
-  <p class="ingress">Markera allt på Hemnets annons eller mäklarens objektbeskrivning (Ctrl+A, Ctrl+C) och klistra in här.
-    Pris, pantbrev, taxeringsvärde och övriga uppgifter läses in, och huset i Alva räknas om på några minuter.
-    En hel resultatsida från Hemnet går också bra: då läggs husen till i flödet.</p>
+  <p class="ingress">Klistra in en länk till en annons, eller markera allt på annonsen (Ctrl+A, Ctrl+C) och klistra in sidan.
+    Läget mäts, pris och uppgifter läses in och annonsens bilder granskas efter tecken på fukt och andra skador.
+    Huset syns i Alva på några minuter. En hel resultatsida från Hemnet går också bra: då läggs husen till i flödet.</p>
 
   <details class="kort" id="installning">
     <summary>Koppling till GitHub</summary>
@@ -73,6 +73,22 @@
     <p class="hjalp" id="tokenStatus"></p>
   </details>
 
+  <details class="kort" id="bokmarke">
+    <summary>Från mobilen: skicka en Hemnet-annons med bilder</summary>
+    <p class="hjalp" style="margin-top:0">Hemnet släpper inte in robotar, så en Hemnet-länk ensam ger läget men inte bilderna.
+      Bokmärket nedan körs i din egen webbläsare på annonsen och skickar sidan hit, med bilderna.</p>
+    <ol class="hjalp">
+      <li>Spara den här sidan som bokmärke.</li>
+      <li>Redigera bokmärket och byt adressen mot texten i rutan nedan.</li>
+      <li>Öppna en annons på hemnet.se i webbläsaren (inte i Hemnet-appen), tryck på bokmärket och sedan på Skicka här.</li>
+    </ol>
+    <div class="rad">
+      <input id="bokmarkeKod" readonly>
+      <button id="kopieraBokmarke" class="sekundar" type="button">Kopiera</button>
+    </div>
+    <p class="hjalp">På en dator går det att dra den här länken till bokmärkesfältet: <a id="bokmarkeLank" href="#">Skicka till Bostadsvakt</a></p>
+  </details>
+
   <div class="kort">
     <label for="hus">Vilket hus gäller det?</label>
     <select id="hus"><option value="">Hitta huset automatiskt på adressen</option></select>
@@ -81,7 +97,7 @@
 
   <div class="kort">
     <label for="text">Annonsen</label>
-    <textarea id="text" placeholder="Klistra in här"></textarea>
+    <textarea id="text" placeholder="Klistra in en länk eller hela sidan"></textarea>
     <div id="forhand" class="hjalp"></div>
   </div>
 
@@ -90,14 +106,24 @@
 </main>
 
 <script type="module">
-import { tolkaObjektsida, htmlTillText, hittaHus } from "../src/objektsida.js";
+import { tolkaObjektsida, htmlTillText, hittaHus, annonsMarkor } from "../src/objektsida.js";
 import { kandaUppgifter } from "../src/fragor.js";
+import { hittaBilder } from "../src/bilder.js";
 
 const DATA = "matthewholm/bostadsvakt-data";
 const VAKT = "matthewholm/bostadsvakt";
 const $ = (id) => document.getElementById(id);
 let html = null;   // sidans HTML när den klistrats in från en webbläsare
 let husLista = [];
+// En annons som bokmärket skickat från en annonssida: länken och hela sidan.
+let skickad = null;
+
+/** En ensam annonslänk, inte en inklistrad sida. */
+function ensamLank(text) {
+  const t = text.trim();
+  if (!/^https?:\/\/\S+$/.test(t)) return null;
+  return /hemnet\.se\/bostad\/|booli\.se\/(annons|bostad)\//.test(t) ? t : null;
+}
 
 const lagra = {
   las() { try { return localStorage.getItem("bostadsvakt-token") || ""; } catch { return ""; } },
@@ -165,6 +191,20 @@ function forhandsvisa() {
   ut.replaceChildren();
   const text = $("text").value;
   if (!text.trim()) { $("skicka").disabled = true; return; }
+  const lank = ensamLank(text);
+  if (lank || skickad) {
+    const p = document.createElement("p");
+    const bilder = skickad ? hittaBilder(skickad.html, skickad.url).length : 0;
+    p.textContent = skickad
+      ? `Annonsen kom från bokmärket, med ${bilder} bilder. Läget mäts och bilderna granskas.`
+      : /booli\.se/.test(lank)
+        ? "En Booli-länk. Läget mäts och annonsens bilder hämtas och granskas."
+        : "En Hemnet-länk. Läget mäts, men Hemnet släpper inte in robotar, så bilderna granskas bara om annonsen skickas med bokmärket ovan.";
+    ut.append(p);
+    $("skicka").disabled = !token();
+    if (!token()) { $("installning").open = true; }
+    return;
+  }
   const ren = html ? htmlTillText(html) : text;
   const fakta = tolkaObjektsida(ren);
   const rader = kandaUppgifter(fakta);
@@ -199,24 +239,46 @@ function visaStatus(text, ton = "") {
   $("status").className = `status ${ton}`;
 }
 
+async function putFil(sokvag, innehall, meddelande) {
+  const finns = await gh(`repos/${DATA}/contents/${sokvag}`);
+  const bytes = new TextEncoder().encode(innehall);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  await gh(`repos/${DATA}/contents/${sokvag}`, {
+    method: "PUT",
+    body: { message: meddelande, content: btoa(bin), ...(finns?.sha ? { sha: finns.sha } : {}) },
+  });
+}
+
+/** En länk, med eller utan sidan från bokmärket: analysera.yml tar den. */
+async function skickaLank(lank) {
+  $("skicka").disabled = true;
+  const start = new Date();
+  try {
+    visaStatus("Skickar...");
+    if (skickad) await putFil("data/annons.html", `${annonsMarkor(lank)}\n${skickad.html}`, "Annons från bokmärket");
+    await gh(`repos/${VAKT}/actions/workflows/analysera.yml/dispatches`, { method: "POST", body: { ref: "main", inputs: { url: lank } } });
+    visaStatus("Skickat. Analysen körs, med bilder brukar det ta tre till fem minuter...");
+    await folj(start, "analysera.yml", "Klart. Huset finns i Alva nu, och notisen i mobilen säger vad bilderna visade.");
+  } catch (err) {
+    visaStatus(`Det gick inte: ${err.message}`, "fel");
+    $("skicka").disabled = false;
+  }
+}
+
 async function skicka() {
+  const lank = skickad?.url ?? ensamLank($("text").value);
+  if (lank) return skickaLank(lank);
   const fil = innehall();
   if (!fil) return;
   $("skicka").disabled = true;
   const start = new Date();
   try {
     visaStatus("Skickar...");
-    const finns = await gh(`repos/${DATA}/contents/data/import.html`);
-    const bytes = new TextEncoder().encode(fil);
-    let bin = "";
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    await gh(`repos/${DATA}/contents/data/import.html`, {
-      method: "PUT",
-      body: { message: "Inklistrad annons från klistra-in-sidan", content: btoa(bin), ...(finns?.sha ? { sha: finns.sha } : {}) },
-    });
+    await putFil("data/import.html", fil, "Inklistrad annons från klistra-in-sidan");
     await gh(`repos/${VAKT}/actions/workflows/bostadsvakt.yml/dispatches`, { method: "POST", body: { ref: "main" } });
     visaStatus("Skickat. Bevakningen körs, det brukar ta två till tre minuter...");
-    await folj(start);
+    await folj(start, "bostadsvakt.yml");
   } catch (err) {
     visaStatus(`Det gick inte: ${err.message}`, "fel");
     $("skicka").disabled = false;
@@ -224,17 +286,22 @@ async function skicka() {
 }
 
 /** Följer körningen som startades, och visar till sist vad som sparades. */
-async function folj(start) {
+async function folj(start, workflow, klartText) {
   const vanta = (ms) => new Promise((r) => setTimeout(r, ms));
   for (let i = 0; i < 60; i++) {
     await vanta(10000);
-    const svar = await gh(`repos/${VAKT}/actions/workflows/bostadsvakt.yml/runs?event=workflow_dispatch&per_page=5`);
+    const svar = await gh(`repos/${VAKT}/actions/workflows/${workflow}/runs?event=workflow_dispatch&per_page=5`);
     const korning = svar?.workflow_runs?.find((r) => new Date(r.created_at) >= new Date(start.getTime() - 60000));
     if (!korning) continue;
-    if (korning.status !== "completed") { visaStatus("Bevakningen körs..."); continue; }
+    if (korning.status !== "completed") { visaStatus(klartText ? "Analysen körs..." : "Bevakningen körs..."); continue; }
     if (korning.conclusion !== "success") {
       visaStatus(`Körningen misslyckades (${korning.conclusion}). Se ${korning.html_url}`, "fel");
       $("skicka").disabled = false;
+      return;
+    }
+    if (klartText) {
+      visaStatus(klartText, "ok");
+      $("text").value = ""; html = null; skickad = null; forhandsvisa();
       return;
     }
     const uppgifter = JSON.parse((await gh(`repos/${DATA}/contents/data/husuppgifter.json`, { raw: true })) ?? "{}");
@@ -252,6 +319,20 @@ async function folj(start) {
 }
 
 $("text").addEventListener("paste", (e) => {
+  // Urklippet från bokmärket: annonsens HTML som vanlig text, med länken
+  // överst. Den tas emot som en skickad annons, inte som text att tolka.
+  const rå = e.clipboardData?.getData("text/plain") ?? "";
+  // \x3c och \x3e i stället för tecknen själva: en kommentarsöppning i ett
+  // inline-skript kan få HTML-tolken att byta läge.
+  const lank = rå.match(/^\x3c!-- bostadsvakt-annons: (\S+) --\x3e/)?.[1];
+  if (lank && ensamLank(lank)) {
+    e.preventDefault();
+    skickad = { url: lank, html: rå.replace(/^\x3c!--[^>]*--\x3e\n?/, "") };
+    $("text").value = lank;
+    html = null;
+    forhandsvisa();
+    return;
+  }
   const h = e.clipboardData?.getData("text/html");
   // Texten i rutan ersätts helt vid en inklistring i en tom ruta; annars
   // blandas HTML från en sida med text som redan stod där, och då är texten
@@ -261,8 +342,44 @@ $("text").addEventListener("paste", (e) => {
 });
 $("text").addEventListener("input", (e) => {
   if (e.inputType !== "insertFromPaste") html = null;
+  if (skickad && !$("text").value.includes(skickad.url)) skickad = null;
   forhandsvisa();
 });
+
+// Bokmärket: körs på annonssidan i användarens egen webbläsare, öppnar den
+// här sidan och skickar över sin egen HTML när den här sidan säger att den
+// är redo. Inget hämtas av en robot; det är samma sida personen redan har
+// framför sig. Bara annonser från Hemnet och Booli tas emot.
+//
+// Två vägar över, för en sajt kan stänga den ena: fönstret som öppnas får
+// sidan med postMessage, och samma sida läggs i urklipp med länken överst,
+// så att den går att klistra in här om fönstret aldrig fick den.
+const BOKMARKE = `javascript:(()=>{const u=location.href,d=document.documentElement.outerHTML;` +
+  `const w=window.open(${JSON.stringify(location.href.split("#")[0])},"bostadsvakt");` +
+  `try{navigator.clipboard.writeText("\\x3c!-- bostadsvakt-annons: "+u+" --\\x3e\\n"+d)}catch(e){}` +
+  `if(!w){alert("Sidan ligger i urklipp. Öppna klistra-in-sidan och klistra in.");return}` +
+  `const h=e=>{if(e.source!==w||e.data!=="bostadsvakt-redo")return;removeEventListener("message",h);` +
+  `w.postMessage({typ:"bostadsvakt-annons",url:u,html:d},"*")};` +
+  `addEventListener("message",h)})()`;
+$("bokmarkeKod").value = BOKMARKE;
+$("bokmarkeLank").href = BOKMARKE;
+$("kopieraBokmarke").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(BOKMARKE); $("kopieraBokmarke").textContent = "Kopierad"; }
+  catch { $("bokmarkeKod").select(); }
+});
+addEventListener("message", (e) => {
+  let fran;
+  try { fran = new URL(e.origin).hostname; } catch { return; }
+  if (!/(^|\.)(hemnet|booli)\.se$/.test(fran)) return;
+  const d = e.data;
+  if (d?.typ !== "bostadsvakt-annons" || typeof d.url !== "string" || typeof d.html !== "string") return;
+  if (!ensamLank(d.url)) return;
+  skickad = { url: d.url, html: d.html };
+  $("text").value = d.url;
+  html = null;
+  forhandsvisa();
+});
+if (window.opener) window.opener.postMessage("bostadsvakt-redo", "*");
 $("hus").addEventListener("change", forhandsvisa);
 $("skicka").addEventListener("click", skicka);
 $("sparaToken").addEventListener("click", () => {

@@ -22,6 +22,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { kostnadsbild, kostnadsSektioner } from "./kostnader.js";
 import { fragorTillMaklaren, kandaUppgifter } from "./fragor.js";
 import { lasMarknad, prisbedomning } from "./marknad.js";
+import { bildgranskningRader } from "./bildgranskning.js";
 
 const traffar = JSON.parse(readFileSync("data/traffar.json", "utf8"));
 const las = (fil, reserv) => {
@@ -80,6 +81,11 @@ const post = (sparat) => {
     ...(hus.sektioner
       ? hus.sektioner.flatMap((s) => sektion(s.titel, s.rader))
       : [...sektion("PENDLING", hus.pendling), ...sektion("OMGIVNING", hus.omgivning), ...sektion("EKONOMI", hus.ekonomiRader)]),
+    // Efter husets egna avsnitt och inte före: Alva lyfter den första
+    // ✓/⚠-raden till kortets rubrikomdöme, och den platsen tillhör "har vi
+    // råd" ur EKONOMI. Bildernas omdöme står i sitt eget avsnitt med sina
+    // egna varningsrutor.
+    ...sektion("BILDGRANSKNING", bildgranskningRader(uppgifter.bildgranskning)),
     // Sist, som en checklista inför samtalet: det som redan är känt, och
     // det som återstår att fråga. Frågorna försvinner i takt med svaren.
     ...sektion("HUSETS UPPGIFTER", kandaUppgifter(uppgifter)),
@@ -94,7 +100,9 @@ const post = (sparat) => {
 
   return {
     id: hus.id,
-    title: [hus.adress, hus.omrade].filter(Boolean).join(" · ") || "(okänd adress)",
+    // En analyserad Hemnet-länk bär orten redan i adressen ("Häckgränd 8,
+    // Väddö Norrtälje"), och då blev rubriken orten två gånger.
+    title: [hus.adress, hus.omrade && !hus.adress?.endsWith(hus.omrade) ? hus.omrade : null].filter(Boolean).join(" · ") || "(okänd adress)",
     image: hus.bild || undefined,
     url: hus.url || undefined,
     links: hus.maklarlank ? [{ label: "Öppna hos mäklaren", url: hus.maklarlank }] : undefined,

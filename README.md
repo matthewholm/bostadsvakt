@@ -255,6 +255,31 @@ hus-id med fälten `pantbrev`, `pantbrevAntal`, `taxeringsvarde`,
 `samfallighetAr`, `ingenSamfallighet`, `uppvarmning`, `va`, `energiklass` och
 `fastighetsbeteckning`.
 
+### Bildgranskning: vad annonsens foton visar
+
+Klistra in en länk till en annons på
+**[klistra-in-sidan](https://matthewholm.github.io/bostadsvakt/klistra/)**, så
+mäts läget som förut och annonsens bilder granskas av Claude (Opus 5.5)
+tillsammans med pris och uppgifter: fuktfläckar, saltutfällningar,
+rötskador, gamla våtrum, tak och fasad, och det som ser bra ut. Svaret blir
+ett avsnitt **BILDGRANSKNING** på huset i Alva och en rad i notisen, med
+bildens nummer vid varje fynd. Det är inte en besiktning: ett foto visar en
+yta och inte vad som finns bakom den, och annonsfoton är valda.
+
+Var bilderna kommer ifrån:
+
+- **Booli-länk**: sidan hämtas av analysen (Boolis robots.txt tillåter
+  annonssidorna) och bilderna med den.
+- **Hemnet-länk**: Hemnet spärrar robotar, och spärren kringgås inte (se
+  `src/annonsberikning.js`). Läget mäts, men bilderna kommer bara med om
+  annonsen skickas från din egen webbläsare: bokmärket under "Från mobilen" på
+  klistra-in-sidan körs på annonsen och skickar över sidan. På en dator går det
+  lika bra att markera hela annonsen och klistra in den.
+
+Kräver `ANTHROPIC_API_KEY` (samma hemlighet som AI-omdömet). Uträknat på
+listpriset blir en annons med fyrtio bilder runt tre till fem kronor. Se
+`src/bildgranskning.js` och `src/bilder.js`.
+
 ## Testa direkt på GitHub
 
 Gå till fliken **Actions** → välj **Testa Bostadsvakt** i vänsterspalten → klicka **Run workflow**. Testet kör hela kedjan med ett låtsashus utanför Norrtälje och funkar även innan alla nycklar är på plats:

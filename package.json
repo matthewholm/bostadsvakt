@@ -12,8 +12,10 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "imapflow": "^1.5.0",
     "mailparser": "^3.9.14",
-    "playwright": "^1.62.1"
+    "playwright": "^1.62.1",
+    "zod": "^4.6.7"
   }
 }
