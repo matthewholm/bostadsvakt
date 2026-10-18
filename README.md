@@ -365,32 +365,43 @@ en gång när felen börjar och en gång när det fungerar igen.
 
 ### Hemligheterna
 
-GitHub visar aldrig ett sparat värde igen, så varje hemlighet hämtas från
-källan. Ta gärna nya nycklar för home-vm, så kan de spärras var för sig.
-
-| Hemlighet | Var värdet finns |
-|---|---|
-| `IMAP_USER` | Inkorgens adress (samma som på GitHub). |
-| `IMAP_PASSWORD` | Ett nytt app-lösenord för inkorgen på myaccount.google.com/apppasswords, döpt till t.ex. "bostadsvakt home-vm". |
-| `RESROBOT_API_KEY` | Projektets nyckel på developer.trafiklab.se. |
-| `NTFY_TOPIC` | Samma topic som i ntfy-appen. |
-| `HA_WEBHOOK_URL` | Samma webhook-adress som webhook-automationen i Home Assistant. |
-| `ANTHROPIC_API_KEY` | En ny nyckel på console.anthropic.com, döpt till "bostadsvakt home-vm". |
-| `DATA_REPO_TOKEN` | En ny fine-grained token på github.com/settings/personal-access-tokens: ägare matthewholm, bara repot `bostadsvakt-data`, Contents: Read and write. Notera utgångsdatumet. |
-
-`IMAP_HOST`, `BOOLI_CALLER_ID` och `BOOLI_PRIVATE_KEY` är valfria, som på GitHub.
+home-vm använder samma secrets som GitHub, och ingen behöver leta fram dem.
+GitHub lämnar aldrig ut ett secret i klartext, så workflowen **Hemligheter
+till home-vm** krypterar dem med [age](https://age-encryption.org) till en
+publik nyckel som home-vm skapar. Den privata nyckeln lämnar aldrig home-vm,
+och bara den kan packa upp klumpen till `/opt/bostadsvakt/.env`. Klumpen syns
+i körningens logg, som är publik, men är oläslig utan den privata nyckeln.
 
 ### Installera (en gång)
 
 Kör på home-vm. Kräver git och docker, som redan finns där.
 
 ```bash
+sudo apt install -y age
 sudo git clone https://github.com/matthewholm/bostadsvakt.git /opt/bostadsvakt/app
 # Containern kör som användare 1000, som måste äga klonen av bostadsvakt-data.
 sudo install -d -o 1000 -g 1000 /opt/bostadsvakt/data-repo
-sudo install -m 600 /opt/bostadsvakt/app/drift/env.exempel /opt/bostadsvakt/.env
-sudo nano /opt/bostadsvakt/.env     # fyll i hemligheterna, utan citattecken
+sudo age-keygen -o /opt/bostadsvakt/nyckel.txt    # skriver ut "Public key: age1..."
 ```
+
+Hämta hemligheterna:
+
+1. Gå till **Actions → Hemligheter till home-vm → Run workflow**, klistra in
+   den publika nyckeln (`age1...`) och kör. Eller från en dator med `gh`:
+   `gh workflow run hemligheter-home-vm.yml -R matthewholm/bostadsvakt -f publik_nyckel=age1...`
+2. Öppna körningen. Sammanfattningen visar en lång rad, klumpen. Kopiera den.
+3. På home-vm, med klumpen inom enkla citattecken:
+
+```bash
+echo 'KLUMPEN' | base64 -d | sudo age -d -i /opt/bostadsvakt/nyckel.txt | sudo install -m 600 /dev/stdin /opt/bostadsvakt/.env
+sudo cut -d= -f1 /opt/bostadsvakt/.env    # ska lista sju namn, från IMAP_USER till DATA_REPO_TOKEN
+```
+
+4. Ta bort körningen i Actions (de tre prickarna, **Delete workflow run**).
+
+Ändras ett secret på GitHub körs steg 1 till 4 igen. Den publika nyckeln visas
+med `sudo age-keygen -y /opt/bostadsvakt/nyckel.txt`.
+Det går också att skriva `.env` för hand efter mallen `drift/env.exempel`.
 
 Provkör en gång för hand. Första bygget tar några minuter (Chromium laddas
 ner), sedan ska loggen sluta med `Sparat.`:
@@ -429,7 +440,8 @@ gh api "repos/matthewholm/bostadsvakt-data/commits?per_page=10" --jq '.[] | .com
   ovan, följt av `sudo systemctl daemon-reload`.
 - Stoppa: `sudo systemctl disable --now bostadsvakt.timer`. GitHub tar över
   schemat inom 45 minuter.
-- Byta en hemlighet: ändra i `/opt/bostadsvakt/.env`, den läses vid nästa körning.
+- Byta en hemlighet: ändra den på GitHub och hämta klumpen igen enligt ovan, eller
+  ändra direkt i `/opt/bostadsvakt/.env`. Den läses vid nästa körning.
 
 ## Bra att veta
 
