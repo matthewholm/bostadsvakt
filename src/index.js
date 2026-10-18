@@ -14,7 +14,7 @@ import {
 } from "./transit.js";
 import { korTid } from "./bil.js";
 import { geokoda, slaUppPlats } from "./geocode.js";
-import { myndighetForKommun, visaKommun } from "./lan.js";
+import { myndighetForKommun, visaKommun, SL, UL } from "./lan.js";
 import { naturInfo } from "./nature.js";
 import { notis } from "./notify.js";
 import { lasSedda, sparaSedda } from "./state.js";
@@ -66,6 +66,7 @@ const bilmal = (k.bilmal ?? []).filter((b) => b?.namn && Number.isFinite(b.lat) 
 // malRestidMin är med för att poängen beror på den (se score.js).
 const pendlingsNyckel = JSON.stringify([
   mal.namn, mal.hallplatsId ?? [mal.lat, mal.lon], bilmal.map((b) => [b.namn, b.lat, b.lon]), k.malRestidMin ?? null,
+  k.andraMal ? [k.andraMal.namn, k.andraMal.lat ?? k.andraMal.adress, k.andraMal.lon ?? null] : null,
 ]);
 console.log(`Pendlingsmål: ${mal.namn}${bilmal.length ? `. Bilmål: ${bilmal.map((b) => b.namn).join(", ")}` : ""}.`);
 
@@ -74,7 +75,13 @@ console.log(`Pendlingsmål: ${mal.namn}${bilmal.length ? `. Bilmål: ${bilmal.ma
 // inte hus för hus.
 let andraMalKoord = null;
 let andraMalMyndighet = null;
-if (harResrobotNyckel() && k.andraMal?.adress) {
+if (harResrobotNyckel() && Number.isFinite(k.andraMal?.lat) && Number.isFinite(k.andraMal?.lon)) {
+  // Med koordinater i config behövs ingen geokodning. Det är också det enda
+  // som fungerar för ett mål utanför bevakningsområdena: geokoda() godtar
+  // bara träffar i de bevakade kommunerna, och Alviks strand ligger inte där.
+  andraMalKoord = { lat: k.andraMal.lat, lon: k.andraMal.lon };
+  andraMalMyndighet = k.andraMal.myndighet === "UL" ? UL : SL;
+} else if (harResrobotNyckel() && k.andraMal?.adress) {
   andraMalKoord = await geokoda(k.andraMal.adress, { omraden: config.searches.map((s) => s.namn) });
   if (!andraMalKoord) {
     console.warn(`  Kunde inte geokoda andra pendlingsmålet "${k.andraMal.adress}" – hoppas över.`);
@@ -385,7 +392,8 @@ async function behandlaAnnons(a, { tyst = false } = {}) {
         a.lat, a.lon, andraMalKoord.lat, andraMalKoord.lon, myndighet, andraMalMyndighet
       );
       if (resaAndra) {
-        pendling.push(`${k.andraMal.namn || "Andra målet"}: ca ${fmtTid(resaAndra.restidMin)}`);
+        const bytenAndra = resaAndra.byten === 0 ? "utan byte" : `${resaAndra.byten} byte${resaAndra.byten > 1 ? "n" : ""}`;
+        pendling.push(`${k.andraMal.namn || "Andra målet"}: ca ${fmtTid(resaAndra.restidMin)} · ${bytenAndra}`);
         matt.restidAndraMalMin = resaAndra.restidMin;
         if (resaAndra.biljett?.tvaBiljetter) pendling.push(`⚠ ${k.andraMal.namn || "Andra målet"}: ${resaAndra.biljett.text}`);
       }
