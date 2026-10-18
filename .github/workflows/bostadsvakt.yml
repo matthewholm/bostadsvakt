@@ -2,8 +2,12 @@ name: Bostadsvakt
 
 on:
   schedule:
-    # Var 30:e minut, kl 06–21 svensk tid (04–19 UTC sommartid)
-    - cron: "*/30 4-19 * * *"
+    # Var 30:e minut, kl 06–21 svensk tid (04–19 UTC sommartid).
+    # 7 och 37 över, inte hel och halv timme: på */30 kördes bara 3 till 5
+    # av 32 planerade körningar per dygn (mätt 13–18 okt 2026), och GitHub
+    # säger själva att schemat tappas oftast när det är som mest belastat,
+    # vid hel timme. Mät igen med gh run list --workflow bostadsvakt.yml.
+    - cron: "7,37 4-19 * * *"
   workflow_dispatch: {}
   # Text som klistrats in på ett hus i Alva ("Skicka till källan" på en
   # extern koppling). Alva skickar { item_id, text } som client_payload,
