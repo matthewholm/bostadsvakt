@@ -182,6 +182,14 @@ och Alva vet inget om bostadsvakt — kopplingen är bara en URL och en token,
 ifylld en gång i Alvas UI, och Alva ritar upp bilder, hjärta-för-att-spara
 och dölj-knapp precis som för vilken annan koppling som helst.
 
+Varje hus bär också `sortable`, tal som Alva kan ordna flödet efter:
+Matchning, Pris, Ålder (byggår), Månadskostnad, Restid till pendlingsmålet
+och Pris mot uppskattning (procent över eller under det uppskattade värdet).
+Ett tal som saknas för ett hus utelämnas, och huset hamnar då sist. Talen är
+husets riktiga värden, så Alvas förvalda riktning (högst först) ger dyrast
+och längst restid först; vänd pilen för billigast och kortast. Se
+`src/sortering.js`.
+
 1. Skapa en fine-grained personal access token på
    [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens),
    scopad bara till `bostadsvakt-data`, med **Contents: read** (inget annat).

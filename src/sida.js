@@ -23,6 +23,8 @@ import { kostnadsbild, kostnadsSektioner } from "./kostnader.js";
 import { fragorTillMaklaren, kandaUppgifter } from "./fragor.js";
 import { lasMarknad, prisbedomning } from "./marknad.js";
 import { bildgranskningRader } from "./bildgranskning.js";
+import { sorteringsvarden } from "./sortering.js";
+import { pendlingsmal } from "./transit.js";
 
 const traffar = JSON.parse(readFileSync("data/traffar.json", "utf8"));
 const las = (fil, reserv) => {
@@ -33,6 +35,8 @@ const config = las("config.json", {});
 // fil per hus-id, inte på husposten: de ska överleva att huset faller ur
 // flödet och kommer tillbaka, och de går att rätta för hand på GitHub.
 const husuppgifter = las("data/husuppgifter.json", {});
+// Målet restiden ska gälla, för sorteringen på restid (se sortering.js).
+const mal = pendlingsmal(config.kriterier);
 const marknad = await lasMarknad(
   "data/marknad.json",
   [...new Set(traffar.map((h) => h.kommun).filter(Boolean))],
@@ -106,11 +110,8 @@ const post = (sparat) => {
     image: hus.bild || undefined,
     url: hus.url || undefined,
     links: hus.maklarlank ? [{ label: "Öppna hos mäklaren", url: hus.maklarlank }] : undefined,
-    sortable: [
-      hus.poang != null && { label: "Matchning", value: hus.poang },
-      hus.pris != null && { label: "Pris", value: hus.pris },
-      hus.byggar != null && { label: "Ålder", value: hus.byggar },
-    ].filter(Boolean),
+    // Vilka tal och i vilken riktning Alva ordnar dem: se sortering.js.
+    sortable: sorteringsvarden({ hus, byggar, kostnad, pris, mal }),
     rader,
   };
 };
