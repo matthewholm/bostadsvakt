@@ -1,0 +1,7 @@
+.git
+.github
+node_modules
+data-repo
+klistra
+test
+.env

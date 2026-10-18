@@ -16,7 +16,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # home-vm kör samma motor var 30:e minut (drift/, README "Köra på home-vm")
+  # och skriver data/drift.json i bostadsvakt-data efter varje lyckad
+  # körning. Har den kört inom 45 minuter hoppar schemat över sin tur, så att
+  # samma nya hus inte notifieras två gånger. Slutar home-vm att köra tar
+  # schemat över av sig självt. Knappen, Alva och klistra-sidan påverkas inte.
+  vakt:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    outputs:
+      hoppa: ${{ steps.koll.outputs.hoppa }}
+    steps:
+      - name: Har home-vm kört nyss?
+        id: koll
+        env:
+          GH_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+        run: |
+          url=repos/matthewholm/bostadsvakt-data/contents/data/drift.json
+          # Saknas filen skriver gh api felet på stdout, därför räknas bara
+          # en giltig tidsstämpel.
+          senaste=$(gh api "$url" -H "Accept: application/vnd.github.raw" --jq ".senasteKorning // empty" 2>/dev/null) || senaste=""
+          giltig='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+          if [[ "$senaste" =~ $giltig ]] && [ $(( $(date +%s) - $(date -d "$senaste" +%s) )) -lt 2700 ]; then
+            echo "home-vm körde $senaste, schemat hoppar över den här gången."
+            echo "hoppa=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Ingen körning från home-vm senaste 45 minuterna (${senaste:-aldrig}), GitHub kör."
+          fi
+
   bevaka:
+    needs: vakt
+    # vakt hoppas över för knappen, Alva och klistra-sidan, därför !cancelled().
+    if: ${{ !cancelled() && needs.vakt.outputs.hoppa != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -66,35 +97,10 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: node src/index.js
 
+      # Samma spara-loop som home-vm kör, se drift/spara.sh.
       - name: Spara sedda annonser och träffar i bostadsvakt-data
         working-directory: data-repo
-        run: |
-          cp data/traffar.json /tmp/mina-traffar.json
-          cp data/seen.json /tmp/mina-seen.json
-          cp data/slutpriser.json /tmp/mina-slutpriser.json
-          # En importfil (se index.js) läses en gång – den här körningen har
-          # läst den, så den tas bort när resultatet sparas.
-          if [ -f data/import.html ]; then touch /tmp/import-last; fi
-          # Nya husuppgifter ur inklistrade objektbeskrivningar läggs ovanpå
-          # den senaste husuppgifter.json av merge.js; själva deltafilen ska
-          # aldrig committas, så den flyttas ut ur checkouten.
-          if [ -f data/husuppgifter-nya.json ]; then mv data/husuppgifter-nya.json /tmp/nya-husuppgifter.json; fi
-          git config user.name "bostadsvakt-bot"
-          git config user.email "actions@users.noreply.github.com"
-          for i in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-            node ../src/merge.js /tmp/mina-traffar.json /tmp/mina-seen.json /tmp/mina-slutpriser.json /tmp/nya-husuppgifter.json
-            node ../src/sida.js
-            if [ -f /tmp/import-last ]; then git rm -q --ignore-unmatch data/import.html; fi
-            git add data/
-            if git diff --cached --quiet; then echo "Inget nytt att spara."; exit 0; fi
-            git commit -m "Uppdatera sedda annonser och träffar"
-            if git push; then echo "Sparat."; exit 0; fi
-            echo "Push avvisad (försök $i) – hämtar senaste och slår ihop igen."
-            sleep 3
-          done
-          echo "Kunde inte spara efter flera försök."; exit 1
+        run: bash ../drift/spara.sh
 
       - name: Larm om körningen misslyckades
         if: failure()

@@ -1,0 +1,9 @@
+[Unit]
+Description=Bostadsvakt var 30:e minut kl 06 till 21:30
+
+[Timer]
+OnCalendar=*-*-* 06..21:00,30:00 Europe/Stockholm
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

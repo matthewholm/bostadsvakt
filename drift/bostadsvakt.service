@@ -1,0 +1,10 @@
+[Unit]
+Description=Bostadsvakt, en körning
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/bostadsvakt/app/drift/home-vm.sh
+TimeoutStartSec=20min

@@ -335,8 +335,104 @@ npm start
 
 Utan `HA_WEBHOOK_URL` skrivs notiserna bara ut i terminalen (torrkörning).
 
+## Köra på home-vm
+
+GitHubs schema är opålitligt för det här repot: av 32 planerade körningar per
+dygn blev det 3 till 5 i oktober 2026. Booli spärrar dessutom GitHubs servrar,
+så annonssidorna (byggår, driftskostnad, mäklarlänk) går inte att hämta därifrån.
+Därför kan samma motor köras i en container på home-vm, var 30:e minut kl 06
+till 21:30 svensk tid, styrd av en systemd-timer. Allt som behövs ligger i
+[`drift/`](drift/).
+
+**Så hänger det ihop.** Timern startar `drift/home-vm.sh`, som hämtar senaste
+koden från GitHub, bygger avbilden (oförändrad kod tar en sekund) och kör en
+container. Containern hämtar det senaste ur bostadsvakt-data, kör
+`node src/index.js` och sparar med samma loop som workflowen
+(`drift/spara.sh`). Efter varje lyckad körning skriver den `data/drift.json`
+med tidpunkten, så det blir en commit i bostadsvakt-data varje halvtimme även
+när inget nytt hus kommit ("Körning på home-vm, inget nytt").
+
+**GitHub är reserv.** Workflowens jobb `vakt` läser `data/drift.json` före
+varje schemalagd körning. Har home-vm kört inom 45 minuter hoppar GitHub över
+sin tur, så att samma nya hus inte notifieras två gånger. Slutar home-vm att
+köra (avstängd, trasig, utan nät) tar GitHub över av sig självt. Knappen
+**Run workflow**, Alvas "Skicka till källan" och klistra-sidan går fortfarande
+via GitHub som förut. Kör två körningar ändå samtidigt slår spara-loopen ihop
+dem: den som pushar sist hämtar den andras resultat och lägger sitt ovanpå.
+
+**Larm.** Går en körning på home-vm fel kommer ett larm via `HA_WEBHOOK_URL`,
+en gång när felen börjar och en gång när det fungerar igen.
+
+### Hemligheterna
+
+GitHub visar aldrig ett sparat värde igen, så varje hemlighet hämtas från
+källan. Ta gärna nya nycklar för home-vm, så kan de spärras var för sig.
+
+| Hemlighet | Var värdet finns |
+|---|---|
+| `IMAP_USER` | Inkorgens adress (samma som på GitHub). |
+| `IMAP_PASSWORD` | Ett nytt app-lösenord för inkorgen på myaccount.google.com/apppasswords, döpt till t.ex. "bostadsvakt home-vm". |
+| `RESROBOT_API_KEY` | Projektets nyckel på developer.trafiklab.se. |
+| `NTFY_TOPIC` | Samma topic som i ntfy-appen. |
+| `HA_WEBHOOK_URL` | Samma webhook-adress som webhook-automationen i Home Assistant. |
+| `ANTHROPIC_API_KEY` | En ny nyckel på console.anthropic.com, döpt till "bostadsvakt home-vm". |
+| `DATA_REPO_TOKEN` | En ny fine-grained token på github.com/settings/personal-access-tokens: ägare matthewholm, bara repot `bostadsvakt-data`, Contents: Read and write. Notera utgångsdatumet. |
+
+`IMAP_HOST`, `BOOLI_CALLER_ID` och `BOOLI_PRIVATE_KEY` är valfria, som på GitHub.
+
+### Installera (en gång)
+
+Kör på home-vm. Kräver git och docker, som redan finns där.
+
+```bash
+sudo git clone https://github.com/matthewholm/bostadsvakt.git /opt/bostadsvakt/app
+# Containern kör som användare 1000, som måste äga klonen av bostadsvakt-data.
+sudo install -d -o 1000 -g 1000 /opt/bostadsvakt/data-repo
+sudo install -m 600 /opt/bostadsvakt/app/drift/env.exempel /opt/bostadsvakt/.env
+sudo nano /opt/bostadsvakt/.env     # fyll i hemligheterna, utan citattecken
+```
+
+Provkör en gång för hand. Första bygget tar några minuter (Chromium laddas
+ner), sedan ska loggen sluta med `Sparat.`:
+
+```bash
+sudo bash /opt/bostadsvakt/app/drift/home-vm.sh
+```
+
+Sätt sedan på timern:
+
+```bash
+sudo cp /opt/bostadsvakt/app/drift/bostadsvakt.service /opt/bostadsvakt/app/drift/bostadsvakt.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now bostadsvakt.timer
+systemctl list-timers bostadsvakt.timer
+```
+
+### Kolla att den kör
+
+```bash
+journalctl -u bostadsvakt --since today          # varje körnings logg
+systemctl list-timers bostadsvakt.timer           # nästa och förra körningen
+```
+
+I bostadsvakt-data ska det komma en commit varje halvtimme, och i Actions ska
+de schemalagda körningarna av Bostadsvakt visa jobbet `bevaka` som överhoppat:
+
+```bash
+gh api "repos/matthewholm/bostadsvakt-data/commits?per_page=10" --jq '.[] | .commit.author.date + " " + .commit.message'
+```
+
+### Ändra, stoppa
+
+- Ny kod på `main` gäller från nästa körning, inget behöver göras på home-vm.
+  Ändras `drift/bostadsvakt.timer` eller `.service` kopieras de igen enligt
+  ovan, följt av `sudo systemctl daemon-reload`.
+- Stoppa: `sudo systemctl disable --now bostadsvakt.timer`. GitHub tar över
+  schemat inom 45 minuter.
+- Byta en hemlighet: ändra i `/opt/bostadsvakt/.env`, den läses vid nästa körning.
+
 ## Bra att veta
 
 - Avstånden till vatten/skog mäts mot objektens mittpunkt i OpenStreetMap och är **ungefärliga** (men allt som rapporteras ligger inom 1,5 km).
 - "Grannar" = antal byggnader inom 300 m enligt OpenStreetMap – uthus och garage räknas också, så jämför siffror mellan hus snarare än att tolka dem exakt.
-- GitHub Actions cron är inte exakt på minuten – körningarna kan komma några minuter senare.
+- GitHub Actions cron är inte exakt på minuten, och för det här repot hoppas de flesta schemalagda körningarna över helt. Se "Köra på home-vm".
