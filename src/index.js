@@ -63,7 +63,10 @@ const bilmal = (k.bilmal ?? []).filter((b) => b?.namn && Number.isFinite(b.lat) 
 // Ändras målen i config räknas husen som redan finns om (se
 // omvarderaPendling nedan). Nyckeln är det som avgör om ett hus är räknat
 // mot de nuvarande målen.
-const pendlingsNyckel = JSON.stringify([mal.namn, mal.hallplatsId ?? [mal.lat, mal.lon], bilmal.map((b) => [b.namn, b.lat, b.lon])]);
+// malRestidMin är med för att poängen beror på den (se score.js).
+const pendlingsNyckel = JSON.stringify([
+  mal.namn, mal.hallplatsId ?? [mal.lat, mal.lon], bilmal.map((b) => [b.namn, b.lat, b.lon]), k.malRestidMin ?? null,
+]);
 console.log(`Pendlingsmål: ${mal.namn}${bilmal.length ? `. Bilmål: ${bilmal.map((b) => b.namn).join(", ")}` : ""}.`);
 
 // Andra pendlingsmål (t.ex. en arbetsplats): valfritt, geokodas en gång här

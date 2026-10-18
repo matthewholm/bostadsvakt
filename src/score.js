@@ -20,6 +20,22 @@ function linjar(varde, max) {
   return Math.max(0, Math.min(100, 100 * (1 - varde / max)));
 }
 
+/**
+ * Som linjar, men med ett mål under spärren: allt upp till målet är 100
+ * poäng, och skalan går sedan ner till 0 vid spärren. Utan mål är det
+ * samma skala som förut, från 0 till spärren.
+ *
+ * Finns för restiden: hushållet vill helst pendla högst en timme men vill
+ * inte att hus på 70 minuter försvinner, så målet sätter poängen och
+ * spärren (maxRestidStockholmMin) avgör vad som syns alls.
+ */
+function linjarMotMal(varde, mal, sparr) {
+  if (mal == null || !sparr || mal >= sparr) return linjar(varde, sparr);
+  if (varde == null) return null;
+  if (varde <= mal) return 100;
+  return Math.max(0, Math.min(100, 100 * (1 - (varde - mal) / (sparr - mal))));
+}
+
 const rund = (n) => Math.round(n * 10) / 10;
 const nummer = (n) => Number(n).toLocaleString("sv-SE");
 
@@ -47,10 +63,12 @@ export function beraknaMatchning(k, matt = {}) {
       vikt: 12,
       varde: restidMin,
       enhet: "min",
-      krav: k.maxRestidStockholmMin,
-      delpoang: linjar(restidMin, k.maxRestidStockholmMin),
+      krav: k.malRestidMin ?? k.maxRestidStockholmMin,
+      delpoang: linjarMotMal(restidMin, k.malRestidMin, k.maxRestidStockholmMin),
       text: restidMin != null
-        ? `${nummer(restidMin)} min till ${malNamn} (kravet är max ${nummer(k.maxRestidStockholmMin)} min)`
+        ? k.malRestidMin != null
+          ? `${nummer(restidMin)} min till ${malNamn} (målet är ${nummer(k.malRestidMin)} min, spärren ${nummer(k.maxRestidStockholmMin)} min)`
+          : `${nummer(restidMin)} min till ${malNamn} (kravet är max ${nummer(k.maxRestidStockholmMin)} min)`
         : null,
     },
     {

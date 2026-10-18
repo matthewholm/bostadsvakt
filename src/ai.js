@@ -73,6 +73,7 @@ export async function skrivBedomning({
       `max vattenavstånd ${k.maxAvståndVattenM} m, max skogsavstånd ${k.maxAvståndSkogM} m, ` +
       `naturkrav "${k.kravNatur ?? "något"}", max grannar inom 300 m: ${k.maxGrannarInom300m}` +
       (k.maxRestidStockholmMin ? `, max restid ${pendlingsmal(k).namn} ${k.maxRestidStockholmMin} min` : "") +
+      (k.malRestidMin ? ` (helst högst ${k.malRestidMin} min)` : "") +
       (budgetKrav ? `, ${budgetKrav}` : "") + ".",
   ].filter(Boolean).join("\n");
 

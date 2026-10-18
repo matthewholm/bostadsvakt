@@ -228,3 +228,16 @@ test("matchningen säger vilket mål restiden gäller", async () => {
   const m = beraknaMatchning(k, { restidMin: 60 });
   assert.ok(m.delar.some((d) => d.namn === "Restid till Alvik"));
 });
+
+test("restidsmålet ger full poäng upp till målet och noll vid spärren", async () => {
+  const { beraknaMatchning } = await import("../src/score.js");
+  const k = { maxRestidStockholmMin: 120, malRestidMin: 60, pendlingsmal: { namn: "Alvik", lat: 59.3334, lon: 17.9823 } };
+  const restid = (min) => beraknaMatchning(k, { restidMin: min }).delar.find((d) => d.namn === "Restid till Alvik");
+  assert.equal(restid(45).delpoang, 100);
+  assert.equal(restid(60).delpoang, 100);
+  assert.equal(restid(90).delpoang, 50);
+  assert.equal(restid(120).delpoang, 0);
+  // Utan mål: samma skala som förut, från 0 till spärren.
+  const utan = beraknaMatchning({ ...k, malRestidMin: undefined }, { restidMin: 60 }).delar.find((d) => d.namn === "Restid till Alvik");
+  assert.equal(utan.delpoang, 50);
+});

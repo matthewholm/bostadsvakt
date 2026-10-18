@@ -57,7 +57,7 @@ if (endastTraffar !== undefined) config.notiser.endastTräffar = endastTraffar;
 // än ett fel, eftersom bevakningen då letar efter fel saker utan att någon vet.
 const TAL_FALT = new Set([
   "maxPris", "minRum", "minBoarea", "minTomtarea",
-  "maxAvståndHållplatsM", "maxRestidStockholmMin",
+  "maxAvståndHållplatsM", "maxRestidStockholmMin", "malRestidMin",
   "maxAvståndVattenM", "maxAvståndSkogM", "maxGrannarInom300m",
 ]);
 const NATURKRAV = new Set(["något", "båda", "inget"]);
