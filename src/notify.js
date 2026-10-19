@@ -1,6 +1,6 @@
 // Skickar push-notiser via en Home Assistant-webhook, som en automation i HA
 // skickar vidare till appen/apparna. Går HA inte att nå – Cloudflares
-// botskydd framför home.houseofholm.se började svara 403 till GitHubs
+// botskydd framför Home Assistant började svara 403 till GitHubs
 // servrar i slutet av september och tystade alla notiser i över en vecka –
 // skickas notisen direkt till ntfy.sh istället (NTFY_TOPIC, samma topic som
 // båda telefonerna prenumererar på). Utan någon av dem loggas den bara.

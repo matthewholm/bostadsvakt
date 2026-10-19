@@ -78,15 +78,10 @@ jobs:
           MAX_GRANNAR: ${{ inputs.maxGrannar }}
           KRAV_NATUR: ${{ inputs.kravNatur == 'behåll' && '' || inputs.kravNatur }}
           ENDAST_TRAFFAR: ${{ inputs.endastTraffar == 'behåll' && '' || inputs.endastTraffar }}
-          KRITERIER_JSON: ${{ inputs.json }}
+        # json läses ur händelsefilen av skriptet, inte härifrån: stegets env
+        # står i den publika loggen, och fältet bär hushållets ekonomi.
+        # Skriptet skriver bara ut vilka fält som ändrades, aldrig värdena.
         run: node src/uppdatera-config.js
-
-      - name: Visa resultat i sammanfattningen
-        run: |
-          echo "## Aktuella inställningar" >> "$GITHUB_STEP_SUMMARY"
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          cat data-repo/config.json >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Committa ändringen i bostadsvakt-data
         working-directory: data-repo

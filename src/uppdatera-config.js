@@ -1,9 +1,14 @@
 // Uppdaterar config.json utifrån miljövariabler från formuläret i
 // workflowen "Ändra inställningar". Tomma fält lämnas oförändrade.
-import { readFileSync, writeFileSync } from "node:fs";
+//
+// Repot är publikt och därmed också loggen och sammanfattningen för varje
+// körning. config.json bär hushållets inkomst, sparande och lån, så skriptet
+// skriver aldrig ut ett värde, bara vilka fält som ändrades.
+import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 
 const FIL = new URL("../data-repo/config.json", import.meta.url);
 const config = JSON.parse(readFileSync(FIL, "utf8"));
+const fore = structuredClone(config);
 const k = config.kriterier;
 
 const tal = (namn) => {
@@ -68,7 +73,9 @@ const NATURKRAV = new Set(["något", "båda", "inget"]);
 const talEllerNull = (namn, varde) => {
   if (varde === null) return null;
   const n = Number(varde);
-  if (!Number.isFinite(n) || n < 0) throw new Error(`Ogiltigt värde för ${namn}: ${JSON.stringify(varde)}`);
+  // Utan värdet i texten: felet hamnar i den publika loggen, och ett
+  // felskrivet tal är ofta hushållets riktiga inkomst med ett mellanslag i.
+  if (!Number.isFinite(n) || n < 0) throw new Error(`Ogiltigt värde för ${namn}: måste vara ett tal, 0 eller större, eller null.`);
   return n;
 };
 
@@ -80,7 +87,17 @@ const HUSHALL_TAL_FALT = new Set(["nettoinkomstManad", "kontantinsatsTillganglig
 const ANTAGANDE_TAL_FALT = new Set(["ranta", "kalkylranta", "driftskostnadKvmAr"]);
 const NUVARANDE_BOSTAD_TAL_FALT = new Set(["varde", "kvarstaendeLan", "maklarkostnadProcent"]);
 
-const json = process.env.KRITERIER_JSON?.trim();
+// Läses ur händelsefilen och inte ur en miljövariabel: GitHub skriver ut
+// stegets env i den publika loggen, och här står hushållets ekonomi.
+// KRITERIER_JSON finns kvar för körning för hand.
+const franHandelsen = () => {
+  try {
+    return JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")).inputs?.json;
+  } catch {
+    return undefined;
+  }
+};
+const json = (process.env.GITHUB_EVENT_PATH ? franHandelsen() : process.env.KRITERIER_JSON)?.trim();
 if (json) {
   let inkommet;
   try {
@@ -152,5 +169,18 @@ if (json) {
 
 writeFileSync(FIL, JSON.stringify(config, null, 2) + "\n");
 
-console.log("Nya inställningar:\n");
-console.log(JSON.stringify(config, null, 2));
+const andrade = [];
+const jamfor = (a, b, vag) => {
+  if (a !== null && b !== null && typeof a === "object" && typeof b === "object" && !Array.isArray(a) && !Array.isArray(b)) {
+    for (const nyckel of new Set([...Object.keys(a), ...Object.keys(b)])) jamfor(a[nyckel], b[nyckel], vag ? `${vag}.${nyckel}` : nyckel);
+  } else if (JSON.stringify(a) !== JSON.stringify(b)) {
+    andrade.push(vag);
+  }
+};
+jamfor(fore, config, "");
+
+const rapport = andrade.length ? `Ändrade fält: ${andrade.join(", ")}` : "Inga ändringar.";
+console.log(rapport);
+if (process.env.GITHUB_STEP_SUMMARY) {
+  appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Ändra inställningar\n\n${rapport}\n\nVärdena står i bostadsvakt-data/config.json.\n`);
+}

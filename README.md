@@ -131,7 +131,7 @@ separat privat repo, [bostadsvakt-data](https://github.com/matthewholm/bostadsva
 som varje workflow checkar ut vid sidan av sig själv (`data-repo/`, en
 fine-grained token scopad bara till det repot — `DATA_REPO_TOKEN`).
 
-**Via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. De handskrivna fälten täcker inte allt (bara åtta rymdes i formuläret); fältet **"Kriterier/hushall som JSON"** tar resten i ett svep, kriterier *och* hushållsekonomi, och är den enda vägen som faktiskt kontrollerar vad du skriver innan den sparar — ett felstavat fält eller ett tal med mellanslag ("45 000") avbryts med ett tydligt fel i stället för att tyst bli fel eller `NaN` i nästa "har vi råd"-uträkning. Funkar även i GitHub-appen i mobilen. Resultatet visas i körningens sammanfattning, och sparas till `bostadsvakt-data`.
+**Via formuläret.** Gå till **Actions → Ändra inställningar → Run workflow**. Fyll bara i det du vill ändra — tomma fält (och valet "behåll") lämnas som de är. De handskrivna fälten täcker inte allt (bara åtta rymdes i formuläret); fältet **"Kriterier/hushall som JSON"** tar resten i ett svep, kriterier *och* hushållsekonomi, och är den enda vägen som faktiskt kontrollerar vad du skriver innan den sparar — ett felstavat fält eller ett tal med mellanslag ("45 000") avbryts med ett tydligt fel i stället för att tyst bli fel eller `NaN` i nästa "har vi råd"-uträkning. Funkar även i GitHub-appen i mobilen. Sammanfattningen visar vilka fält som ändrades men aldrig värdena, eftersom loggen i ett publikt repo är publik. Värdena sparas i `bostadsvakt-data`.
 
 ```jsonc
 {
